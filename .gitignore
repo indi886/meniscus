@@ -12,3 +12,5 @@ assets-src/**/*.blend1
 assets-src/video/_cut/
 assets-src/video/_frames/
 *.log
+
+.vercel

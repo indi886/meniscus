@@ -16,6 +16,25 @@ import type { Take } from '../core/scroll';
 import { loadTexture } from '../core/assets';
 import { clamp, smooth, lerp, band, rng, invLerp } from '../core/util';
 import { sunAt } from '../core/sun';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+
+/** The Blender model (Draco). Phones drop requests, so it retries twice. */
+function loadModel(url: string, tries = 3): Promise<{ scene: THREE.Group }> {
+  const draco = new DRACOLoader().setDecoderPath('/draco/');
+  const loader = new GLTFLoader().setDRACOLoader(draco);
+  return loader.loadAsync(url).then(
+    (g) => {
+      draco.dispose();
+      return g;
+    },
+    (err) => {
+      draco.dispose();
+      if (tries <= 1) throw err;
+      return new Promise((r) => setTimeout(r, 800)).then(() => loadModel(url, tries - 1));
+    },
+  );
+}
 
 // ---------------------------------------------------------------------------------------------
 // timeline: step windows in take progress, and the working-day clock at each boundary
@@ -47,6 +66,10 @@ const X0 = -W / 2, X1 = W / 2, Z0 = -D / 2, Z1 = D / 2;
 const DROPS = 4; // east face, 2.5 m each
 const FORE = { x0: X1 + 0.2, x1: X1 + 10.2, z0: -7, z1: 7 };
 const PAVER_LANES = 10;
+/** the modelled downpipe (see build_building.py) */
+const DPX = X1 - 0.45, DPZ = Z1 + 0.12;
+/** roof deck top in the model */
+const DECK = H + 0.15;
 /** radius of the sun-path dome drawn around the building (an architect's solar study) */
 const R_ARC = 26;
 
@@ -99,6 +122,11 @@ ${NOISE}`)
   float cleanW = smoothstep(front - 0.12, front + 0.12, vWPos.y);
   gWet = cleanW * smoothstep(front + 3.0, front, vWPos.y) * step(-1.5, uWallFront) * step(uWallFront, 16.0);
   gDirt = dirtW * (1.0 - cleanW);
+  #ifdef USE_AOMAP
+    float aoS = texture2D(aoMap, vAoMapUv).r;
+    gDirt = clamp(gDirt * mix(1.5, 0.85, aoS), 0.0, 1.0);
+    diffuseColor.rgb *= mix(0.6, 1.0, aoS);
+  #endif
   vec3 grimeC = diffuseColor.rgb * vec3(0.3, 0.32, 0.28) + vec3(0.015, 0.03, 0.018) * streak;
   diffuseColor.rgb = mix(diffuseColor.rgb, grimeC, gDirt);
   diffuseColor.rgb *= 1.0 - gWet * 0.32;
@@ -317,7 +345,8 @@ export class ProcessScene extends GLStage {
   private pipeMat: THREE.ShaderMaterial;
   private tech = new THREE.Group();
   private ropes: THREE.Line[] = [];
-  private ropeAnchors = [new THREE.Vector3(X1 - 0.6, H + 0.5, 1.2), new THREE.Vector3(X1 - 0.6, H + 0.5, 1.8)];
+  private ropeAnchors = [new THREE.Vector3(X1 - 0.6, H + 0.65, 1.2), new THREE.Vector3(X1 - 0.6, H + 0.65, 1.8)];
+  private buildingMats: Record<string, THREE.MeshStandardMaterial> = {};
   private leaves!: THREE.InstancedMesh;
   private leafBase: { pos: THREE.Vector3; d: number; r: number }[] = [];
   private nozzle = new THREE.Group();
@@ -376,15 +405,46 @@ export class ProcessScene extends GLStage {
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target, this.hemi, this.fill, this.fill.target);
     this.hoseMat = new THREE.ShaderMaterial({ vertexShader: FLOW_VERT, fragmentShader: FLOW_FRAG, fog: true, uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, uFill: { value: 0 }, uColor: { value: new THREE.Color(0x8ec5b1) }, uPulse: { value: -1 } } });
-    this.pipeMat = new THREE.ShaderMaterial({ vertexShader: FLOW_VERT, fragmentShader: FLOW_FRAG, fog: true, uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, uFill: { value: 0 }, uColor: { value: new THREE.Color(0x9fd8ff) }, uPulse: { value: -1 } } });
+    this.pipeMat = new THREE.ShaderMaterial({ vertexShader: FLOW_VERT, fragmentShader: FLOW_FRAG, fog: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, uFill: { value: 0 }, uColor: { value: new THREE.Color(0x9fd8ff) }, uPulse: { value: -1 } } });
     this.build();
   }
 
   override async load(): Promise<void> {
-    const t = await loadTexture('/media/img/tex-concrete.webp', { repeat: true });
+    const [t, gltf, ao] = await Promise.all([
+      loadTexture('/media/img/tex-concrete.webp', { repeat: true }),
+      loadModel('/media/model/building.glb'),
+      loadTexture('/media/model/building-ao.webp'),
+    ]);
     t.colorSpace = THREE.NoColorSpace;
     this.shared.tConcrete!.value = t;
+    // glTF UVs run top-down: the baked AO must not be flipped, and it is data, not colour
+    ao.flipY = false;
+    ao.colorSpace = THREE.NoColorSpace;
+    ao.needsUpdate = true;
     this.scene.environment = this.makeEnv();
+    const seen = new Set<THREE.Material>();
+    gltf.scene.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const src = m.material as THREE.MeshStandardMaterial;
+      const mapped = this.buildingMats[src.name];
+      const mat = mapped ?? src;
+      if (!mapped) {
+        mat.envMapIntensity = src.name === 'interior' ? 0 : 1;
+        if (src.name !== 'interior') this.disposables.push(src);
+      }
+      if (!seen.has(mat)) {
+        seen.add(mat);
+        mat.aoMap = ao;
+        mat.aoMapIntensity = 1;
+        mat.needsUpdate = true;
+      }
+      m.material = mat;
+      m.castShadow = src.name !== 'interior' && !src.name.startsWith('glass');
+      m.receiveShadow = true;
+    });
+    this.disposables.push(ao);
+    this.scene.add(gltf.scene);
   }
 
   /** A gradient sky with a low city skyline painted into an equirect, prefiltered for reflections. */
@@ -437,7 +497,6 @@ export class ProcessScene extends GLStage {
     const shop = dirtMaterial(1, S, { color: 0x3c4a52, roughness: 0.04, metalness: 0.75, envMapIntensity: 1.2 }, true);
     const pavers = dirtMaterial(2, S, { color: 0xcfc5b4, roughness: 0.78, metalness: 0, envMapIntensity: 1.2 });
     const solar = dirtMaterial(3, S, { color: 0x0c1830, roughness: 0.12, metalness: 0.55, envMapIntensity: 1.3 });
-    const alu = new THREE.MeshStandardMaterial({ color: 0x5e676c, roughness: 0.38, metalness: 0.85 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x15181a, roughness: 0.7, metalness: 0.1 });
     const white = new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.4, metalness: 0 });
     const asphalt = new THREE.MeshStandardMaterial({ color: 0x141a1e, roughness: 0.95, metalness: 0 });
@@ -460,114 +519,27 @@ export class ProcessScene extends GLStage {
     const kerb = new THREE.BoxGeometry(0.2, 0.15, fd);
     add(kerb, white, FORE.x1 + 0.1, 0.075, 0);
 
-    // the building: render core with the east face left open for the glass
-    const core = new THREE.BoxGeometry(W - 0.6, H, D);
-    add(core, render, -0.3, H / 2, 0);
-    // east face: curtain wall (upper floors) and shopfront (ground)
-    const cw = add(new THREE.BoxGeometry(0.3, H - FLOOR, D), glass, X1 - 0.15, FLOOR + (H - FLOOR) / 2, 0);
-    cw.castShadow = true;
-    add(new THREE.BoxGeometry(0.3, FLOOR - 0.35, D - 1.2), shop, X1 - 0.35, (FLOOR - 0.35) / 2, 0.6);
-    // shopfront pier and fascia in render
-    add(new THREE.BoxGeometry(0.6, FLOOR, 1.2), render, X1 - 0.3, FLOOR / 2, Z0 + 0.6);
-    add(new THREE.BoxGeometry(0.62, 0.35, D), render, X1 - 0.3, FLOOR - 0.175, 0);
-    // mullions and transoms
-    const mullGeo = new THREE.BoxGeometry(0.12, H - FLOOR, 0.07);
-    const mulls = new THREE.InstancedMesh(mullGeo, alu, 9);
-    for (let i = 0; i <= 8; i++) {
-      this.tmpM.makeTranslation(X1 + 0.03, FLOOR + (H - FLOOR) / 2, Z0 + (i * D) / 8);
-      mulls.setMatrixAt(i, this.tmpM);
-    }
-    mulls.castShadow = true;
-    this.scene.add(mulls);
-    const tranGeo = new THREE.BoxGeometry(0.14, 0.12, D);
-    const trans = new THREE.InstancedMesh(tranGeo, alu, 4);
-    for (let i = 0; i < 4; i++) {
-      this.tmpM.makeTranslation(X1 + 0.04, FLOOR + i * FLOOR, 0);
-      trans.setMatrixAt(i, this.tmpM);
-    }
-    this.scene.add(trans);
-    // punched windows on the render faces: frames proud of the wall, dark glass inset
-    const winW = 1.6, winH = 1.9;
-    const frameGeo = new THREE.BoxGeometry(winW + 0.22, winH + 0.22, 0.2);
-    const paneGeo = new THREE.BoxGeometry(winW, winH, 0.1);
-    const frames: THREE.Matrix4[] = [];
-    const panes: THREE.Matrix4[] = [];
-    const q = new THREE.Quaternion();
-    const place = (x: number, y: number, z: number, rotY: number) => {
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY);
-      const n = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
-      frames.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z).addScaledVector(n, 0.06), q, new THREE.Vector3(1, 1, 1)));
-      panes.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z).addScaledVector(n, 0.11), q, new THREE.Vector3(0.94, 0.94, 1)));
+    // the building itself is modelled in Blender (scripts/blender/build_building.py) and arrives in
+    // load(); its material names map onto the dirt materials made here
+    this.buildingMats = {
+      stone: render,
+      trim: dirtMaterial(0, S, { color: 0xe6d6b8, roughness: 0.75, metalness: 0 }),
+      base: dirtMaterial(0, S, { color: 0xa69174, roughness: 0.9, metalness: 0 }),
+      glass_cw: glass,
+      glass_win: dirtMaterial(1, S, { color: 0x6f8794, roughness: 0.05, metalness: 0.88, envMapIntensity: 1.25 }),
+      glass_shop: shop,
+      spandrel: dirtMaterial(1, S, { color: 0x2b353b, roughness: 0.2, metalness: 0.65, envMapIntensity: 1.1 }),
+      solar,
     };
-    for (let f = 0; f < FLOORS; f++) {
-      const y = f * FLOOR + 1.75;
-      for (let i = 0; i < 5; i++) {
-        const x = X0 + 1.6 + i * 2.55;
-        place(x, y, Z1, 0); // south
-        place(x, y, Z0, Math.PI); // north
-      }
-      for (let i = 0; i < 3; i++) place(X0 + 0.0, y, Z0 + 1.9 + i * 3.1, -Math.PI / 2); // west
-    }
-    const frameIM = new THREE.InstancedMesh(frameGeo, alu, frames.length);
-    frames.forEach((m, i) => frameIM.setMatrixAt(i, m));
-    frameIM.castShadow = true;
-    frameIM.receiveShadow = true;
-    this.scene.add(frameIM);
-    const paneIM = new THREE.InstancedMesh(paneGeo, glass, panes.length);
-    panes.forEach((m, i) => paneIM.setMatrixAt(i, m));
-    this.scene.add(paneIM);
-    // sills (streaks run from these)
-    const sillIM = new THREE.InstancedMesh(new THREE.BoxGeometry(winW + 0.3, 0.06, 0.16), white, frames.length);
-    frames.forEach((m, i) => {
-      const pos = new THREE.Vector3(), qq = new THREE.Quaternion(), sc = new THREE.Vector3();
-      m.decompose(pos, qq, sc);
-      pos.y -= winH / 2 + 0.1;
-      sillIM.setMatrixAt(i, new THREE.Matrix4().compose(pos, qq, sc));
-    });
-    this.scene.add(sillIM);
-    // string courses: a light band at every floor line, proud of the render
-    const band = new THREE.MeshStandardMaterial({ color: 0xe9dcc4, roughness: 0.7 });
-    for (let f = 1; f <= FLOORS; f++) {
-      const y = f * FLOOR - 0.05;
-      add(new THREE.BoxGeometry(W - 0.6 + 0.24, 0.16, 0.12), band, -0.3, y, Z1 + 0.06);
-      add(new THREE.BoxGeometry(W - 0.6 + 0.24, 0.16, 0.12), band, -0.3, y, Z0 - 0.06);
-      add(new THREE.BoxGeometry(0.12, 0.16, D + 0.24), band, X0 - 0.06 + 0.3, y, 0);
-    }
-    // a plinth course at the base
-    add(new THREE.BoxGeometry(W - 0.6 + 0.2, 0.5, D + 0.2), new THREE.MeshStandardMaterial({ color: 0x8a8174, roughness: 0.8 }), -0.3, 0.25, 0);
-    // parapet with metal capping, box gutter behind it
-    const capH = PARAPET;
-    add(new THREE.BoxGeometry(W + 0.1, capH, 0.25), render, 0, H + capH / 2, Z1 - 0.125);
-    add(new THREE.BoxGeometry(W + 0.1, capH, 0.25), render, 0, H + capH / 2, Z0 + 0.125);
-    add(new THREE.BoxGeometry(0.25, capH, D), render, X0 + 0.125, H + capH / 2, 0);
-    add(new THREE.BoxGeometry(0.25, capH, D), alu, X1 - 0.125, H + capH / 2, 0);
-    add(new THREE.BoxGeometry(W + 0.3, 0.06, 0.4), alu, 0, H + capH + 0.03, Z1 - 0.125);
-    add(new THREE.BoxGeometry(0.4, 0.06, D + 0.3), alu, X1 - 0.125, H + capH + 0.03, 0);
-    // gutters: a galvanised channel inside the east and south parapets
-    const gutterMat = new THREE.MeshStandardMaterial({ color: 0x7c8488, roughness: 0.5, metalness: 0.8 });
-    add(new THREE.BoxGeometry(0.4, 0.05, D - 0.6), gutterMat, X1 - 0.5, H + 0.02, 0, false);
-    add(new THREE.BoxGeometry(W - 0.8, 0.05, 0.4), gutterMat, 0, H + 0.02, Z1 - 0.5, false);
-    // roof plant
-    add(new THREE.BoxGeometry(2.2, 1.3, 1.6), white, X0 + 2.0, H + 0.65, Z0 + 1.6);
-    add(new THREE.BoxGeometry(1.0, 0.8, 1.0), dark, X0 + 4.3, H + 0.4, Z0 + 1.4);
-    // solar array: three rows tilted north
-    const panelGeo = new THREE.BoxGeometry(9.2, 0.05, 1.7);
-    for (let r = 0; r < 3; r++) {
-      const z = -3.6 + r * 2.2 + 1.1;
-      const pnl = add(panelGeo, solar, -0.4, H + 0.55, z);
-      pnl.rotation.x = -0.26;
-      add(new THREE.BoxGeometry(9.2, 0.42, 0.06), alu, -0.4, H + 0.3, z + 0.7, true, true);
-    }
     // anchors near the east parapet
     const anchorGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 10);
     for (const a of this.ropeAnchors) {
-      const m = add(anchorGeo, this.anchorMat, a.x, H + 0.25, a.z, false, false);
+      const m = add(anchorGeo, this.anchorMat, a.x, H + 0.4, a.z, false, false);
       this.anchors.push(m);
     }
-    for (const z of [-3.2, -1.0, 3.4]) this.anchors.push(add(anchorGeo, this.anchorMat, X1 - 0.6, H + 0.25, z, false, false));
-    // downpipe at the south-east corner, with a flow sleeve for the flush
-    add(new THREE.CylinderGeometry(0.075, 0.075, H, 12), gutterMat, X1 + 0.12, H / 2, Z1 + 0.12);
-    const pipeCurve = new THREE.LineCurve3(new THREE.Vector3(X1 + 0.12, H, Z1 + 0.12), new THREE.Vector3(X1 + 0.12, 0.05, Z1 + 0.12));
+    for (const z of [-3.2, -1.0, 3.4]) this.anchors.push(add(anchorGeo, this.anchorMat, X1 - 0.6, H + 0.4, z, false, false));
+    // the modelled downpipe (south face, by the east pier) gets a glowing sleeve for the flush
+    const pipeCurve = new THREE.LineCurve3(new THREE.Vector3(DPX, H - 0.45, DPZ), new THREE.Vector3(DPX, 0.12, DPZ));
     const sleeve = new THREE.Mesh(new THREE.TubeGeometry(pipeCurve, 40, 0.09, 10, false), this.pipeMat);
     this.scene.add(sleeve);
 
@@ -608,8 +580,8 @@ export class ProcessScene extends GLStage {
       new THREE.Vector3(X1 + 1.2, 0.08, Z0 + 1.5),
       new THREE.Vector3(X1 + 0.35, 0.3, Z0 + 1.3),
       new THREE.Vector3(X1 + 0.3, H * 0.6, Z0 + 1.4),
-      new THREE.Vector3(X1 + 0.3, H + 1.0, Z0 + 1.6),
-      new THREE.Vector3(X1 - 0.8, H + 0.4, 0.2),
+      new THREE.Vector3(X1 + 0.3, H + 1.25, Z0 + 1.6),
+      new THREE.Vector3(X1 - 0.9, DECK + 0.12, -2.6),
     ]);
     this.scene.add(new THREE.Mesh(new THREE.TubeGeometry(hoseCurve, 160, 0.05, 8, false), this.hoseMat));
 
@@ -652,7 +624,7 @@ export class ProcessScene extends GLStage {
       const east = D - 0.6;
       const len = east + (W - 0.8);
       const d = t * len;
-      const pos = d < east ? new THREE.Vector3(X1 - 0.5 + (lr() - 0.5) * 0.25, H + 0.07, Z0 + 0.3 + d) : new THREE.Vector3(X1 - 0.4 - (d - east), H + 0.07, Z1 - 0.5 + (lr() - 0.5) * 0.25);
+      const pos = d < east ? new THREE.Vector3(X1 - 0.5 + (lr() - 0.5) * 0.25, DECK + 0.05, Z0 + 0.3 + d) : new THREE.Vector3(X1 - 0.4 - (d - east), DECK + 0.05, Z1 - 0.5 + (lr() - 0.5) * 0.25);
       this.leafBase.push({ pos, d: t, r: lr() });
     }
     this.scene.add(this.leaves);
@@ -858,7 +830,7 @@ export class ProcessScene extends GLStage {
     const east = D - 0.6;
     const total = east + (W - 0.8);
     const vd = vac * total;
-    const nozPos = vd < east ? new THREE.Vector3(X1 - 0.5, H + 0.45, Z0 + 0.3 + vd) : new THREE.Vector3(X1 - 0.4 - (vd - east), H + 0.45, Z1 - 0.5);
+    const nozPos = vd < east ? new THREE.Vector3(X1 - 0.5, DECK + 0.45, Z0 + 0.3 + vd) : new THREE.Vector3(X1 - 0.4 - (vd - east), DECK + 0.45, Z1 - 0.5);
     this.nozzle.position.copy(nozPos);
     this.nozzle.visible = step === 3 && vac > 0 && vac < 1;
     for (let i = 0; i < this.leafBase.length; i++) {
@@ -884,12 +856,12 @@ export class ProcessScene extends GLStage {
     const flush = clamp((roofL - 0.45) / 0.12);
     this.pipeMat.uniforms.uPulse!.value = flush > 0 && flush < 1 ? 1 - flush : -1;
     this.pipeMat.uniforms.uFill!.value = 0;
-    this.spray(3, flush > 0.75 && flush < 1 ? 1 : 0, new THREE.Vector3(X1 + 0.12, 0.1, Z1 + 0.12), new THREE.Vector3(0.4, 0.6, 0.4), { spread: 1.6, speed: 1.6, life: 0.6, size: 0.1 });
+    this.spray(3, flush > 0.75 && flush < 1 ? 1 : 0, new THREE.Vector3(DPX, 0.1, DPZ + 0.15), new THREE.Vector3(0.4, 0.6, 0.4), { spread: 1.6, speed: 1.6, life: 0.6, size: 0.1 });
     const solarS = clamp((roofL - 0.58) / 0.4) * 3;
     S.uSolarS!.value = solarS;
     const row = Math.min(2, Math.floor(solarS));
     const bx = -4.6 + (solarS - row) * 9.2;
-    this.brush.position.set(bx, H + 0.75, -3.6 + row * 2.2 + 1.1);
+    this.brush.position.set(bx, H + 0.9, -3.6 + row * 2.2 + 1.1);
     this.brush.visible = step === 3 && solarS > 0 && solarS < 3;
     if (this.brush.visible) this.spray(0, 1, this.brush.position.clone().add(new THREE.Vector3(0, 0.05, 0)), new THREE.Vector3(-0.3, 0.8, 0.2), { spread: 1.4, speed: 1.4, life: 0.5, size: 0.07 });
 
