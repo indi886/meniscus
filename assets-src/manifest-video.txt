@@ -1,0 +1,7 @@
+v1-blade 01a1ea17-60d6-7cf2-a39b-14e8852d1323 https://v3b.fal.media/files/b/0ab2d80c/pX3Z7E1YrIMbplt_2URoH_minimax-h3.mp4
+v2-rope 01a1ea17-6023-7933-b271-7bcc91ef035a https://v3b.fal.media/files/b/0ab2d80c/dNE0MybQGgR92jR53kTqC_minimax-h3.mp4
+v3-pole 01a1ea17-600f-7bf3-a945-ac4864666e87 https://v3b.fal.media/files/b/0ab2d80c/JYsDeMOKC6t_fB5_ftS9Z_minimax-h3.mp4
+v4-surface 01a1ea17-60d7-72c1-a851-644bfd43dca1 https://v3b.fal.media/files/b/0ab2d80c/Z7mU6DX0kg-HQWxawmPxn_minimax-h3.mp4
+v5-solar 01a1ea17-6013-74e3-a7c1-426d178fcaa4 https://v3b.fal.media/files/b/0ab2d80c/m_NF7pm8DKNGwe5HHmVvT_minimax-h3.mp4
+v6-shop 01a1ea17-60d6-7a11-b872-4ffad554c490 https://v3b.fal.media/files/b/0ab2d80c/ewahOyHpNAQ996P4N5McC_minimax-h3.mp4
+v7-drops 01a1ea17-6019-7ea3-9059-8e0161945e6f https://v3b.fal.media/files/b/0ab2d80d/P0mF3A3rosK-NdhkF4N01_minimax-h3.mp4

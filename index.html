@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="en-AU">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Meniscus | Commercial glass, façade and surface cleaning, Sydney</title>
+    <meta name="description" content="Meniscus cleans commercial glass, façades, gutters, car parks, skylights and solar arrays across Sydney with 000 ppm water, in the shade, and signs off every job with readings." />
+    <meta name="theme-color" content="#0F1B22" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" href="/fonts/mona-sans-var-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <script>document.documentElement.classList.add('js');</script>
+  </head>
+  <body>
+    <a class="skip" href="#about">Skip to content</a>
+    <!-- the forecourt's water: turbulence displacement, calmed by scroll (sections/flow.ts) -->
+    <svg class="sr-only" width="0" height="0" aria-hidden="true" focusable="false"><filter id="ripple" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.01 0.06" numOctaves="2" seed="3" /><feDisplacementMap in="SourceGraphic" scale="20" xChannelSelector="R" yChannelSelector="G" /></filter></svg>
+
+    <!-- The light of the working day: one fixed layer per hour, cross-faded by scroll (opacity only). -->
+    <div class="sky" aria-hidden="true" data-sky>
+      <i data-sky-layer="predawn"></i>
+      <i data-sky-layer="sunrise"></i>
+      <i data-sky-layer="day"></i>
+      <i data-sky-layer="noon"></i>
+      <i data-sky-layer="storm"></i>
+      <i data-sky-layer="bluehour"></i>
+      <i data-sky-layer="dusk"></i>
+      <i data-sky-layer="night"></i>
+    </div>
+
+    <!-- 04:40: purge the line. Real bytes drive the reading from mains water to 000 ppm. -->
+    <div class="preloader" data-preloader role="status" aria-live="polite">
+      <div class="preloader__sheet">
+        <svg class="preloader__edge" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0H1440V40C1320 62 1200 70 1080 58S840 22 720 30 480 74 360 66 120 30 0 46Z" /></svg>
+        <div class="preloader__inner">
+          <p class="preloader__time"><span data-pl-clock>04:40:00</span> Alexandria depot, purging the line</p>
+          <div class="preloader__vessel" aria-hidden="true">
+            <div class="preloader__resin" data-pl-resin></div>
+            <div class="preloader__fill" data-pl-fill></div>
+          </div>
+          <p class="preloader__ppm"><span class="preloader__num" data-pl-ppm>062</span><span class="preloader__unit">ppm</span></p>
+          <ol class="preloader__stages">
+            <li data-pl-stage>Carbon</li>
+            <li data-pl-stage>Reverse osmosis</li>
+            <li data-pl-stage>Mixed-bed resin</li>
+            <li data-pl-stage>At the brush</li>
+          </ol>
+          <p class="preloader__bytes"><span data-pl-bytes>0.0 of 0.0 MB</span></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Viewfinder HUD: take, move, lens and the timecode of the working day. -->
+    <header class="hud" data-hud>
+      <a class="hud__mark" href="#top" aria-label="Meniscus, back to the top">Meniscus</a>
+      <nav class="hud__nav" aria-label="Sections">
+        <a href="#about">About</a>
+        <a href="#services">Services</a>
+        <a href="#process">Method</a>
+        <a href="#work">Work</a>
+        <a href="#team">Crew</a>
+        <a href="/services.html">Method statements</a>
+      </nav>
+      <div class="hud__take" aria-hidden="true">
+        <span class="hud__cell"><b>Take</b> <span data-hud-take>01</span></span>
+        <span class="hud__cell hud__move" data-hud-move>Locked-off fan stroke</span>
+        <span class="hud__cell"><span data-hud-lens>40</span> mm</span>
+      </div>
+      <div class="hud__clock" aria-hidden="true">
+        <span class="hud__tc" data-hud-tc>05:12:00:00</span>
+        <span class="hud__cell"><b>Sun</b> <span data-hud-sun>−6.2°</span></span>
+        <span class="hud__cell"><b>Shade</b> <span data-hud-face>all faces</span></span>
+      </div>
+      <div class="hud__water" aria-hidden="true">
+        <span class="hud__cell"><b>Water at the brush</b> <span data-hud-tds>000</span> ppm</span>
+        <span class="hud__frame" data-hud-frame></span>
+      </div>
+    </header>
+    <!-- outside the HUD: the HUD blends by difference, the brass button must not -->
+    <a class="cta-fixed" href="#contact" data-magnetic>Book a survey</a>
+    <div class="letterbox" aria-hidden="true" data-letterbox><i></i><i></i></div>
+    <div class="cut" aria-hidden="true" data-cut></div>
+
+    <div class="cursor" aria-hidden="true" data-cursor>
+      <i class="cursor__blade" data-cursor-blade><b></b></i>
+      <i class="cursor__lock" data-cursor-lock><b></b><b></b></i>
+      <i class="cursor__dot" data-cursor-dot></i>
+      <span class="cursor__label" data-cursor-label></span>
+    </div>
+
+    <main>
+      <!-- TAKE 1 · 05:12 · the commercial behind a pane that is cleaned on load -->
+      <section class="take take--hero" id="top" data-take="hero" data-clock="05:12-05:34" data-move="Locked-off fan stroke" data-lens="40" data-theme="predawn" data-letterbox="0">
+        <div class="stage">
+          <video class="hero__video" data-film muted playsinline loop preload="auto" aria-hidden="true"></video>
+          <canvas class="gl gl--hero" data-gl="hero" aria-hidden="true"></canvas>
+          <div class="hero__copy">
+            <p class="hero__kicker" data-hero-in>Sydney, since 2011</p>
+            <h1 class="wordmark" data-wordmark aria-label="Meniscus">Meniscus</h1>
+            <p class="hero__line" data-hero-in>Commercial glass, façades and hard surfaces, cleaned to a reading.</p>
+            <p class="hero__sub" data-hero-in>Shopfronts before the doors open. Towers on rope while the face is in shade. Car parks after the last car leaves.</p>
+            <div class="hero__cta" data-hero-in>
+              <a class="btn btn--brass" href="#contact" data-magnetic><span>Book a site survey</span></a>
+              <a class="btn btn--line" href="#process" data-magnetic><span>See the method</span></a>
+            </div>
+          </div>
+          <dl class="hero__readings" data-hero-in>
+            <div><dt>Water at the brush</dt><dd><span class="num">000</span> ppm</dd></div>
+            <div><dt>Sun on the face we clean</dt><dd><span class="num">0</span>°</dd></div>
+            <div><dt>Rope access</dt><dd>IRATA L3 on every drop</dd></div>
+            <div><dt>Public liability</dt><dd><span class="num">$20</span> million</dd></div>
+          </dl>
+          <p class="hero__scroll" data-hero-in>Scroll to follow the shade</p>
+        </div>
+      </section>
+
+      <!-- TAKE 2 · 06:40 · polarizer turn: the reflection goes out, the room appears -->
+      <section class="take take--about" id="about" data-take="about" data-clock="06:40-07:05" data-move="Polarizer turn" data-lens="50" data-theme="sunrise">
+        <div class="stage about">
+          <div class="about__window" data-about-window>
+            <img class="about__room" src="/media/img/about-room.webp" alt="An architecture studio at sunrise seen through a clean floor-to-ceiling window" width="1920" height="1080" decoding="async" />
+            <img class="about__sky" src="/media/img/about-sky.webp" alt="" width="1920" height="1080" decoding="async" data-about-sky />
+            <div class="about__mullions" aria-hidden="true"></div>
+          </div>
+          <div class="about__disc" aria-hidden="true" data-about-disc>
+            <div class="about__disc-view" data-about-disc-view>
+              <img class="about__room" src="/media/img/about-room.webp" alt="" decoding="async" />
+              <img class="about__sky" src="/media/img/about-sky.webp" alt="" decoding="async" data-about-disc-sky />
+            </div>
+            <svg class="about__ring" viewBox="0 0 200 200" data-about-ring>
+              <circle cx="100" cy="100" r="97" />
+              <g data-about-ticks></g>
+              <text x="100" y="16" text-anchor="middle">0</text>
+            </svg>
+          </div>
+          <div class="about__copy">
+            <h2 class="display" data-magnetic-text>Two pictures in every pane</h2>
+            <p class="voice">Every window holds two pictures: the sky it reflects and the room behind it. Dirt sits between them and spoils both. We started on a ladder in Marrickville in 2011 with a fourteen-inch channel and a bucket, and learned the first rule the hard way: if the sun is on the glass, you are not cleaning it, you are printing streaks on it.</p>
+            <p>So every job is planned around two zeros. Zero parts per million in the water, so nothing is left behind when it dries. Zero sun on the face we are working, so it dries by gravity instead of evaporation. Thirty-eight technicians, eleven vans and two hot-water trailers run that rule from a depot in Alexandria.</p>
+          </div>
+          <div class="about__filter" aria-hidden="true">
+            <p><b>Polarizer</b> <span class="num" data-about-angle>0</span>°</p>
+            <p><b>Reflection passed</b> <span class="num" data-about-pass>100</span>%</p>
+            <p class="about__note">At Brewster's angle, 56.7° for float glass, reflected light is fully polarised. Turn the filter a quarter and the sky goes out.</p>
+          </div>
+          <dl class="data-array about__data">
+            <div><dt>Sites on the books</dt><dd class="num">1,240</dd></div>
+            <div><dt>Glass cleaned, FY26</dt><dd><span class="num">1.9</span> million m²</dd></div>
+            <div><dt>Rope-access technicians</dt><dd><span class="num">14</span>, IRATA L1–L3</dd></div>
+            <div><dt>Lost-time injuries since 2011</dt><dd class="num">0</dd></div>
+            <div><dt>Mains water in</dt><dd><span class="num">40–90</span> ppm</dd></div>
+            <div><dt>Reply with a shade plan</dt><dd><span class="num">1</span> working day</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- TAKE 3 · 08:30 · overhead lane pass: the pointer is a 25° nozzle -->
+      <section class="take take--services" id="services" data-take="services" data-clock="08:30-10:40" data-move="Overhead lane pass" data-lens="35" data-theme="day">
+        <div class="stage services">
+          <header class="services__head">
+            <h2 class="display">Seven surfaces, one rule</h2>
+            <p class="services__lede">Each service sits in the hour of the day it belongs to. Drag across the frame: the pointer is a 25° nozzle.</p>
+          </header>
+          <div class="services__frame" data-svc-frame>
+            <canvas class="gl gl--svc" data-gl="services" aria-hidden="true"></canvas>
+            <div class="services__fan" aria-hidden="true" data-svc-fan></div>
+          </div>
+          <ol class="services__index" data-svc-index>
+            <li data-svc="0" data-img="svc-office"><span class="svc__slot">07:00</span><span class="svc__name">Office and retail windows</span></li>
+            <li data-svc="1" data-img="svc-highrise"><span class="svc__slot">08:30</span><span class="svc__name">High-rise and multi-storey glass</span></li>
+            <li data-svc="2" data-img="svc-gutter"><span class="svc__slot">10:00</span><span class="svc__name">Commercial gutters</span></li>
+            <li data-svc="3" data-img="svc-facade"><span class="svc__slot">13:00</span><span class="svc__name">Façades and exterior walls</span></li>
+            <li data-svc="4" data-img="svc-pressure"><span class="svc__slot">21:00</span><span class="svc__name">Pressure cleaning: patios, paths, car parks</span></li>
+            <li data-svc="5" data-img="svc-skylight"><span class="svc__slot">05:00</span><span class="svc__name">Glass doors, shopfronts and skylights</span></li>
+            <li data-svc="6" data-img="svc-solar"><span class="svc__slot">05:50</span><span class="svc__name">Solar panels</span></li>
+          </ol>
+          <div class="services__sheets">
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>Office and retail windows</h3>
+              <p>Ground to fourth floor from the footpath. 000 ppm water goes up a carbon pole, so nothing leans on your glass and nothing is left on it when it dries.</p>
+              <dl class="data-array"><div><dt>Reach from the ground</dt><dd><span class="num">20</span> m</dd></div><div><dt>Water</dt><dd><span class="num">000</span> ppm, RO and DI</dd></div><div><dt>Cadence</dt><dd>every <span class="num">2–6</span> weeks</dd></div><div><dt>Reading we hand you</dt><dd>VLT within <span class="num">2</span>% of new glass</dd></div></dl>
+            </article>
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>High-rise and multi-storey glass</h3>
+              <p>Two-rope access or the building's own BMU, planned so every drop hangs on a face in shade. An IRATA Level 3 supervises every job.</p>
+              <dl class="data-array"><div><dt>Drop width</dt><dd><span class="num">2.4</span> m</dd></div><div><dt>Anchors</dt><dd>AS/NZS 5532, tagged within <span class="num">12</span> months</dd></div><div><dt>Drops a day</dt><dd><span class="num">6–10</span> per technician</dd></div><div><dt>Cadence</dt><dd>quarterly</dd></div></dl>
+            </article>
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>Commercial gutters</h3>
+              <p>Box gutters, sumps and downpipes vacuumed from the ground or the parapet, then proven with a flow test, not a photo of a clean gutter.</p>
+              <dl class="data-array"><div><dt>Vacuum</dt><dd><span class="num">3,600</span> W wet and dry</dd></div><div><dt>Poles</dt><dd><span class="num">12</span> m carbon</dd></div><div><dt>Downpipe flow after</dt><dd><span class="num">5</span> L/s or better</dd></div><div><dt>Cadence</dt><dd>autumn and before October</dd></div></dl>
+            </article>
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>Façades and exterior walls</h3>
+              <p>Soft wash for render, paint and cladding. Superheated steam with no chemicals for sandstone and heritage brick. Rinsed before anything can dry on the face.</p>
+              <dl class="data-array"><div><dt>Soft wash</dt><dd>under <span class="num">500</span> psi</dd></div><div><dt>Steam for stone</dt><dd><span class="num">150</span> °C at <span class="num">2</span> bar</dd></div><div><dt>Reading we hand you</dt><dd>colorimeter L* before and after</dd></div><div><dt>Cladding</dt><dd>neutral pH, soft brush</dd></div></dl>
+            </article>
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>Pressure cleaning: patios, paths, car parks</h3>
+              <p>Hot water under a rotary surface cleaner, with every litre vacuum-recovered so nothing reaches the stormwater. Oil, gum and tyre marks come out at 85 °C.</p>
+              <dl class="data-array"><div><dt>Machine</dt><dd><span class="num">3,000</span> psi, <span class="num">21</span> L/min, <span class="num">85</span> °C</dd></div><div><dt>Recovery</dt><dd>vacuum boom, <span class="num">1,000</span> L tank</dd></div><div><dt>Discharge</dt><dd>to sewer, trade-waste permit</dd></div><div><dt>Reading we hand you</dt><dd>AS 4586 pendulum slip rating</dd></div></dl>
+            </article>
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>Glass doors, shopfronts and skylights</h3>
+              <p>Finished before seven, so your doors open on glass that isn't there. Skylights from a harness on a static line, never from the glazing bars.</p>
+              <dl class="data-array"><div><dt>Shopfront window</dt><dd><span class="num">05:00–07:00</span></dd></div><div><dt>Skylights</dt><dd>static line to AS/NZS 1891</dd></div><div><dt>Hard-water etch</dt><dd>cerium oxide polish</dd></div><div><dt>Cadence</dt><dd>weekly to monthly</dd></div></dl>
+            </article>
+            <article class="svc-sheet" data-svc-sheet>
+              <h3>Solar panels</h3>
+              <p>Pure water and soft brushes at first light, while the glass is still cool. No detergent, no pressure, and nobody ever walks on a panel.</p>
+              <dl class="data-array"><div><dt>Yield recovered</dt><dd>average <span class="num">+11.4</span>%</dd></div><div><dt>Pressure at the brush</dt><dd>under <span class="num">1.5</span> bar</dd></div><div><dt>Reading we hand you</dt><dd>inverter kWh, day before and after</dd></div><div><dt>Cadence</dt><dd><span class="num">2–4</span> times a year</dd></div></dl>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAKE 4 · 11:00 → 17:20 · the signature 3D take: one building, cleaned top-down while the sun crosses -->
+      <section class="take take--process" id="process" data-take="process" data-clock="11:00-17:20" data-move="Shade-chase orbit" data-lens="32" data-theme="noon" data-letterbox="1">
+        <div class="stage process">
+          <canvas class="gl gl--process" data-gl="process" aria-hidden="true"></canvas>
+          <header class="process__head">
+            <h2 class="display">Gravity is the schedule</h2>
+            <p>One building, cleaned the way we clean every building: top down, in the shade, signed off with numbers.</p>
+          </header>
+          <ol class="process__steps" data-steps>
+            <li data-step><span class="step__time">11:02</span><h3>Survey</h3><p>We walk the site with a sun-path diagram and a laser meter, log every anchor's test tag, and write the shade plan: which face, which hour.</p></li>
+            <li data-step><span class="step__time">11:40</span><h3>Rig and isolate</h3><p>Anchors proof-loaded to 15 kN before anyone hangs from them, two ropes per technician, an exclusion zone taped off below. Nothing starts until the barrier is up.</p></li>
+            <li data-step><span class="step__time">12:05</span><h3>Purify</h3><p>Mains water at 62 ppm runs through carbon, a reverse-osmosis membrane and mixed-bed resin. It leaves the trailer at 000 ppm, measured at the brush, not at the tap.</p></li>
+            <li data-step><span class="step__time">12:30</span><h3>Roof first</h3><p>Top down, always. Gutters vacuumed and flow-tested, then the solar array brushed with pure water. Whatever we loosen up here lands on surfaces we haven't cleaned yet.</p></li>
+            <li data-step><span class="step__time">13:20</span><h3>Façade</h3><p>Soft wash from the parapet down in 2.4-metre drops, rinsed before anything can dry on the face. The south wall is in shade from noon.</p></li>
+            <li data-step><span class="step__time">14:10</span><h3>Glass</h3><p>The sun has gone off the east face. Strip washer, then the fan stroke: one continuous S with the blade at 30°, edges detailed with scrim. The meniscus is the line we follow.</p></li>
+            <li data-step><span class="step__time">15:05</span><h3>Ground</h3><p>Last, because everything above drains onto it. Hot water under a rotary cleaner, every litre vacuum-recovered and taken to sewer under our trade-waste permit.</p></li>
+            <li data-step><span class="step__time">16:50</span><h3>Reading</h3><p>We sign off with numbers instead of a walk-around: parts per million at the brush, light through the glass, kilowatt-hours from the inverter, litres per second from the downpipe.</p></li>
+          </ol>
+          <div class="process__report" data-report>
+            <h3>Site report, 17:20</h3>
+            <table>
+              <thead><tr><th scope="col">Reading</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">Glass light transmission</th><td class="num">71%</td><td class="num">89%</td></tr>
+                <tr><th scope="row">Solar yield</th><td class="num">41.2 kWh</td><td class="num">46.1 kWh</td></tr>
+                <tr><th scope="row">Downpipe flow</th><td class="num">0.8 L/s</td><td class="num">5.2 L/s</td></tr>
+                <tr><th scope="row">Façade lightness L*</th><td class="num">54</td><td class="num">71</td></tr>
+                <tr><th scope="row">Paver slip rating</th><td class="num">P3</td><td class="num">P4</td></tr>
+                <tr><th scope="row">Water at the brush</th><td class="num">062 ppm</td><td class="num">000 ppm</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="process__rail" aria-hidden="true"><i data-rail></i></div>
+        </div>
+      </section>
+
+      <!-- TAKE 5 · 17:48 · southerly buster: every drop on the pane is a lens holding a job -->
+      <section class="take take--work" id="work" data-take="work" data-clock="17:48-18:40" data-move="Rain-pane traverse and plunge" data-lens="100" data-theme="storm" data-letterbox="1">
+        <div class="stage work">
+          <canvas class="gl gl--work" data-gl="work" aria-hidden="true"></canvas>
+          <header class="work__head">
+            <h2 class="display">A southerly comes through at a quarter to six</h2>
+            <p>Every drop on the glass is a lens, and every lens holds a job upside down. Follow one in and it rights itself past the focal point.</p>
+          </header>
+          <div class="work__list" data-work-list>
+            <article class="proj" data-proj data-img="proj-tower">
+              <p class="proj__where">Sydney CBD</p>
+              <h3>Erskine Street Tower</h3>
+              <p>Thirty-one levels of unitised curtain wall on rope, every quarter. The west face goes before 10:30, the east face after 13:30.</p>
+              <dl class="data-array"><div><dt>Glass</dt><dd><span class="num">14,200</span> m²</dd></div><div><dt>Drops per clean</dt><dd class="num">58</dd></div><div><dt>Crew</dt><dd><span class="num">6</span> on rope</dd></div></dl>
+            </article>
+            <article class="proj" data-proj data-img="proj-arcade">
+              <p class="proj__where">Sydney CBD, 1891</p>
+              <h3>Wynyard Lane Arcade</h3>
+              <p>A barrel-vault skylight of 640 panes, cleaned from harness on a static line between 04:30 and the arcade opening at seven.</p>
+              <dl class="data-array"><div><dt>Skylight</dt><dd><span class="num">1,100</span> m²</dd></div><div><dt>Panes</dt><dd class="num">640</dd></div><div><dt>Cadence</dt><dd>monthly</dd></div></dl>
+            </article>
+            <article class="proj" data-proj data-img="proj-carpark">
+              <p class="proj__where">Parramatta</p>
+              <h3>Church Street Car Park</h3>
+              <p>Nine decks of broom-finished concrete, overnight. Oil, gum and tyre marks out at 85 °C, and every litre recovered.</p>
+              <dl class="data-array"><div><dt>Concrete</dt><dd><span class="num">9,800</span> m²</dd></div><div><dt>Water recovered</dt><dd><span class="num">41,000</span> L</dd></div><div><dt>Slip rating</dt><dd>P3 to P4</dd></div></dl>
+            </article>
+            <article class="proj" data-proj data-img="proj-solar">
+              <p class="proj__where">Botany</p>
+              <h3>Distribution centre array</h3>
+              <p>A 1.2 MW roof downwind of the airport. Jet-exhaust soot was costing it 14% of its yield; four cleans a year win it back.</p>
+              <dl class="data-array"><div><dt>Panels</dt><dd class="num">2,860</dd></div><div><dt>Yield after</dt><dd><span class="num">+13.8</span>%</dd></div><div><dt>Cleans</dt><dd><span class="num">4</span> a year</dd></div></dl>
+            </article>
+            <article class="proj" data-proj data-img="proj-bond">
+              <p class="proj__where">The Rocks, 1843</p>
+              <h3>The Bond Store</h3>
+              <p>Hawkesbury sandstone cleaned with superheated steam and nothing else, under the building's conservation management plan.</p>
+              <dl class="data-array"><div><dt>Stone</dt><dd><span class="num">2,300</span> m²</dd></div><div><dt>Lightness L*</dt><dd>49 to 68</dd></div><div><dt>Method</dt><dd>steam, <span class="num">150</span> °C</dd></div></dl>
+            </article>
+            <article class="proj" data-proj data-img="proj-strip">
+              <p class="proj__where">Newtown</p>
+              <h3>King Street round</h3>
+              <p>Forty-two shopfronts on one weekly round, every one finished before seven, frames and sills included.</p>
+              <dl class="data-array"><div><dt>Shopfronts</dt><dd class="num">42</dd></div><div><dt>Round</dt><dd><span class="num">05:00–07:00</span></dd></div><div><dt>On the books since</dt><dd class="num">2013</dd></div></dl>
+            </article>
+          </div>
+          <div class="work__count" aria-hidden="true"><span class="num" data-work-n>1</span> of <span class="num">6</span></div>
+        </div>
+      </section>
+
+      <!-- TAKE 6 · 19:05 · fan-down tilt: a blade pulls each line from a wet 75% channel to a dry 125% -->
+      <section class="take take--voices" id="voices" data-take="voices" data-clock="19:05-19:35" data-move="Fan-down tilt" data-lens="85" data-theme="bluehour">
+        <div class="stage voices">
+          <!-- blue hour behind the glass; the condensation below the blade is wiped away as it passes -->
+          <div class="voices__city" aria-hidden="true"></div>
+          <i class="voices__fog" aria-hidden="true" data-fog></i>
+          <h2 class="voices__title">What facility managers sign off</h2>
+          <div class="voices__deck">
+            <figure class="quote" data-quote>
+              <blockquote><p>They sent me a diagram of where the sun would be on our building at every hour before they sent me a price. Then they turned up when the diagram said.</p></blockquote>
+              <figcaption><span class="voice">Priya Raman</span> Facilities manager, Erskine Street Tower</figcaption>
+            </figure>
+            <figure class="quote" data-quote>
+              <blockquote><p>Forty-two shopfronts, one round, before seven. In nine years I've rung them twice, and both times it was to add a shop.</p></blockquote>
+              <figcaption><span class="voice">Marco Ferri</span> Owner, King Street pharmacy</figcaption>
+            </figure>
+            <figure class="quote" data-quote>
+              <blockquote><p>The inverter told us before they did. Thirteen point eight percent back, the morning after the first clean.</p></blockquote>
+              <figcaption><span class="voice">Hannah Cole</span> Asset manager, Botany distribution centre</figcaption>
+            </figure>
+            <figure class="quote" data-quote>
+              <blockquote><p>Our conservation architect asked for no chemicals and no abrasives on 1843 sandstone. They brought steam and a colorimeter.</p></blockquote>
+              <figcaption><span class="voice">Daniel Achebe</span> Heritage manager, The Bond Store</figcaption>
+            </figure>
+          </div>
+          <i class="voices__blade" aria-hidden="true" data-blade><b></b></i>
+        </div>
+      </section>
+
+      <!-- TAKE 7 · 19:40 · truck along the glazing rack -->
+      <section class="take take--team" id="team" data-take="team" data-clock="19:40-20:10" data-move="Truck along the glazing rack" data-lens="85" data-theme="dusk">
+        <div class="team">
+          <header class="team__head">
+            <h2 class="display" data-magnetic-text>The crew behind the glass</h2>
+            <p>Each portrait sits behind a sample from our glazing rack. Point at one, or scroll it to the middle, and the sample slides away.</p>
+          </header>
+          <div class="team__rack" data-rack>
+            <figure class="member" data-member tabindex="0">
+              <div class="member__frame">
+                <img src="/media/img/team-tess.webp" alt="Tess Okafor on a rooftop at dusk holding her helmet" width="720" height="900" loading="lazy" decoding="async" />
+                <div class="glass glass--etched" aria-hidden="true"><span>Acid-etched, 10 mm</span></div>
+              </div>
+              <figcaption><h3>Tess Okafor</h3><p class="member__role">Founder, operations director</p><p>Started Meniscus with a ladder and a fourteen-inch channel. Still draws the shade plan for every high-rise.</p><p class="member__tickets">IRATA L3, BMU operator, Working at Heights</p></figcaption>
+            </figure>
+            <figure class="member" data-member tabindex="0">
+              <div class="member__frame">
+                <img src="/media/img/team-duc.webp" alt="Duc Nguyen in a harness clipped to a roof anchor at blue hour" width="720" height="900" loading="lazy" decoding="async" />
+                <div class="glass glass--reeded" aria-hidden="true"><span>Reeded, 12 mm flute</span></div>
+              </div>
+              <figcaption><h3>Duc Nguyen</h3><p class="member__role">Rope-access supervisor</p><p>3,100 drops without a dropped tool. Reads every anchor tag himself before a rope goes over the edge.</p><p class="member__tickets">IRATA L3, first aid, confined space</p></figcaption>
+            </figure>
+            <figure class="member" data-member tabindex="0">
+              <div class="member__frame">
+                <img src="/media/img/team-mere.webp" alt="Mere Tawhiri holding a water purity meter beside a van-mounted purification system" width="720" height="900" loading="lazy" decoding="async" />
+                <div class="glass glass--tint" aria-hidden="true"><span>Grey tint, 22% VLT</span></div>
+              </div>
+              <figcaption><h3>Mere Tawhiri</h3><p class="member__role">Water and pressure lead</p><p>Owns the RO trailers, the resin and the trade-waste permit. Carries a TDS meter on a lanyard and uses it.</p><p class="member__tickets">Hot-water pressure systems, trade waste</p></figcaption>
+            </figure>
+            <figure class="member" data-member tabindex="0">
+              <div class="member__frame">
+                <img src="/media/img/team-callum.webp" alt="Callum Reid on a city footpath at dusk with a laser distance meter and tablet" width="720" height="900" loading="lazy" decoding="async" />
+                <div class="glass glass--mirror" aria-hidden="true"><span>Reflective, one-way</span></div>
+              </div>
+              <figcaption><h3>Callum Reid</h3><p class="member__role">Estimator, site surveys</p><p>Prices from a sun path and a laser meter. Replies within a working day, usually with a sketch.</p><p class="member__tickets">Working at Heights, WHS cert IV</p></figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAKE 8 · 20:30 · nozzle change: each answer opens at its tip's angle -->
+      <section class="take take--faq" id="faq" data-take="faq" data-clock="20:30-20:55" data-move="Nozzle change, snap zoom" data-lens="50" data-theme="night">
+        <div class="faq">
+          <header class="faq__head">
+            <h2 class="display">Questions, by nozzle</h2>
+            <p>Pressure tips are colour-coded by spray angle. Each answer opens at its tip's angle, narrowest first.</p>
+          </header>
+          <div class="faq__list" data-faq-list>
+            <div class="qa" data-faq data-tip="0"><h3><button type="button" aria-expanded="false" aria-controls="qa1" id="qa1-b"><i class="tip tip--0" aria-hidden="true"></i><span class="qa__tip">0°</span><span class="qa__q">Do you need to come inside the building?</span></button></h3><div class="qa__a" id="qa1" role="region" aria-labelledby="qa1-b"><div><i class="qa__fan" aria-hidden="true"></i><p>For most low-rise work, no. Water-fed poles reach 20 m from the footpath. For high-rise we need roof access to the anchors and, if the building has a BMU, its logbook.</p></div></div></div>
+            <div class="qa" data-faq data-tip="15"><h3><button type="button" aria-expanded="false" aria-controls="qa2" id="qa2-b"><i class="tip tip--15" aria-hidden="true"></i><span class="qa__tip">15°</span><span class="qa__q">What happens if it rains the next day?</span></button></h3><div class="qa__a" id="qa2" role="region" aria-labelledby="qa2-b"><div><i class="qa__fan" aria-hidden="true"></i><p>Rain is soft water and dries clean on its own. Glass looks dirty after rain because grime washes down from frames and sills, so we clean those too. If runoff from a surface we cleaned spoils the glass within 48 hours, we come back at no charge.</p></div></div></div>
+            <div class="qa" data-faq data-tip="15"><h3><button type="button" aria-expanded="false" aria-controls="qa3" id="qa3-b"><i class="tip tip--15" aria-hidden="true"></i><span class="qa__tip">15°</span><span class="qa__q">Is pure water safe on tint film, low-E coatings and anodised frames?</span></button></h3><div class="qa__a" id="qa3" role="region" aria-labelledby="qa3-b"><div><i class="qa__fan" aria-hidden="true"></i><p>Yes. Water at 000 ppm carries no detergent and no minerals, which makes it the gentlest thing you can put on a coating. We never use a scraper on coated or toughened glass.</p></div></div></div>
+            <div class="qa" data-faq data-tip="25"><h3><button type="button" aria-expanded="false" aria-controls="qa4" id="qa4-b"><i class="tip tip--25" aria-hidden="true"></i><span class="qa__tip">25°</span><span class="qa__q">Can you work while we're open?</span></button></h3><div class="qa__a" id="qa4" role="region" aria-labelledby="qa4-b"><div><i class="qa__fan" aria-hidden="true"></i><p>Shopfronts are done between 05:00 and 07:00. High-rise drops run in business hours with an exclusion zone below and a spotter at every entrance under the drop.</p></div></div></div>
+            <div class="qa" data-faq data-tip="25"><h3><button type="button" aria-expanded="false" aria-controls="qa5" id="qa5-b"><i class="tip tip--25" aria-hidden="true"></i><span class="qa__tip">25°</span><span class="qa__q">Where does the wastewater go?</span></button></h3><div class="qa__a" id="qa5" role="region" aria-labelledby="qa5-b"><div><i class="qa__fan" aria-hidden="true"></i><p>Not into the stormwater. Water from pressure cleaning is vacuum-recovered, filtered and discharged to sewer under our Sydney Water trade-waste permit. Runoff from pure-water glass cleaning is just water.</p></div></div></div>
+            <div class="qa" data-faq data-tip="40"><h3><button type="button" aria-expanded="false" aria-controls="qa6" id="qa6-b"><i class="tip tip--40" aria-hidden="true"></i><span class="qa__tip">40°</span><span class="qa__q">Are you insured, and can we see the paperwork?</span></button></h3><div class="qa__a" id="qa6" role="region" aria-labelledby="qa6-b"><div><i class="qa__fan" aria-hidden="true"></i><p>$20 million public liability, workers' compensation, and a site-specific safe work method statement for every job. Anchor certificates and IRATA logbook numbers come attached to the quote.</p></div></div></div>
+            <div class="qa" data-faq data-tip="40"><h3><button type="button" aria-expanded="false" aria-controls="qa7" id="qa7-b"><i class="tip tip--40" aria-hidden="true"></i><span class="qa__tip">40°</span><span class="qa__q">How often should commercial glass be cleaned?</span></button></h3><div class="qa__a" id="qa7" role="region" aria-labelledby="qa7-b"><div><i class="qa__fan" aria-hidden="true"></i><p>Shopfronts weekly or fortnightly, offices every four to eight weeks, high-rise quarterly, skylights monthly to quarterly, solar two to four times a year. Near the airport or a busy road, shorten all of it.</p></div></div></div>
+            <div class="qa" data-faq data-tip="65"><h3><button type="button" aria-expanded="false" aria-controls="qa8" id="qa8-b"><i class="tip tip--soap" aria-hidden="true"></i><span class="qa__tip">Soap</span><span class="qa__q">Do you walk on solar panels?</span></button></h3><div class="qa__a" id="qa8" role="region" aria-labelledby="qa8-b"><div><i class="qa__fan" aria-hidden="true"></i><p>Never. We brush from walkways or from a harness line with a pole. Standing on a panel causes micro-cracks you won't see until the yield drops.</p></div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAKE 9 · 21:10 · tilt down into the wet forecourt; the reflection stills into the form -->
+      <section class="take take--contact" id="contact" data-take="contact" data-clock="21:10-21:40" data-move="Tilt-down into the wet forecourt" data-lens="24" data-theme="night">
+        <div class="contact">
+          <div class="contact__plate" aria-hidden="true">
+            <div class="contact__tilt" data-tilt>
+              <img class="contact__shop" src="/media/img/contact-forecourt.webp" alt="" width="1920" height="1080" decoding="async" loading="lazy" />
+              <div class="contact__pool" data-pool>
+                <img src="/media/img/contact-forecourt.webp" alt="" width="1920" height="1080" decoding="async" loading="lazy" />
+              </div>
+            </div>
+            <p class="contact__title" data-contact-title>Tomorrow, 04:40</p>
+            <p class="contact__title contact__title--mirror" data-contact-mirror>Tomorrow, 04:40</p>
+          </div>
+          <div class="contact__body">
+            <header class="contact__head">
+              <h2 class="display">Send us an address</h2>
+              <p>We'll send back a shade plan and a price within a working day: which faces, which hours, how many drops, and what the readings should be when we leave.</p>
+            </header>
+            <form class="form" data-form novalidate>
+              <div class="form__row">
+                <label class="field"><span>Your name</span><input name="name" autocomplete="name" required /></label>
+                <label class="field"><span>Company or building</span><input name="company" autocomplete="organization" /></label>
+              </div>
+              <div class="form__row">
+                <label class="field"><span>Email</span><input name="email" type="email" autocomplete="email" required /></label>
+                <label class="field"><span>Phone</span><input name="phone" type="tel" autocomplete="tel" /></label>
+              </div>
+              <label class="field"><span>Site address</span><input name="address" autocomplete="street-address" required /></label>
+              <fieldset class="chips">
+                <legend>What needs cleaning</legend>
+                <label><input type="checkbox" name="svc" value="windows" /><span>Office and retail windows</span></label>
+                <label><input type="checkbox" name="svc" value="highrise" /><span>High-rise glass</span></label>
+                <label><input type="checkbox" name="svc" value="gutters" /><span>Gutters</span></label>
+                <label><input type="checkbox" name="svc" value="facade" /><span>Façade</span></label>
+                <label><input type="checkbox" name="svc" value="pressure" /><span>Pressure cleaning</span></label>
+                <label><input type="checkbox" name="svc" value="shopfront" /><span>Shopfronts and skylights</span></label>
+                <label><input type="checkbox" name="svc" value="solar" /><span>Solar</span></label>
+              </fieldset>
+              <div class="form__row">
+                <label class="field"><span>Storeys</span><input name="storeys" inputmode="numeric" pattern="[0-9]*" /></label>
+                <label class="field"><span>Best window</span><select name="window"><option>Before we open</option><option>Business hours</option><option>After close</option><option>Weekends</option></select></label>
+              </div>
+              <label class="field"><span>Anything we should know</span><textarea name="notes" rows="3"></textarea></label>
+              <div class="form__foot">
+                <button class="btn btn--brass" type="submit" data-magnetic><span>Request a site survey</span></button>
+                <p class="form__msg" data-form-msg role="status" aria-live="polite"></p>
+              </div>
+            </form>
+          </div>
+        </div>
+        <footer class="foot">
+          <p class="foot__mark">Meniscus</p>
+          <div class="foot__cols">
+            <p>Depot<br />Unit 4, 19 Bourke Road<br />Alexandria NSW 2015</p>
+            <p>Crews out from 04:40<br /><a href="tel:+61255504127">(02) 5550 4127</a></p>
+            <p><a href="/services.html">Method statements</a><br /><a href="#top">Back to first light</a></p>
+          </div>
+          <p class="foot__small">A fictional firm. Photographs and film are generated for this site.</p>
+        </footer>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

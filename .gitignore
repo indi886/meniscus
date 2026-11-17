@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vercel/
+shots/
+# raw generations stay local (request ids are in assets-src/manifest-*.txt); the shipped,
+# optimised media lives in public/media
+assets-src/**/*.jpg
+assets-src/**/*.png
+assets-src/**/*.mp4
+assets-src/**/*.blend
+assets-src/**/*.blend1
+assets-src/video/_cut/
+assets-src/video/_frames/
+*.log
