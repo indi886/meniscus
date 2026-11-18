@@ -18,6 +18,7 @@ import { clamp, smooth, lerp, band, rng, invLerp } from '../core/util';
 import { sunAt } from '../core/sun';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 /** The Blender model (Draco). Phones drop requests, so it retries twice. */
 function loadModel(url: string, tries = 3): Promise<{ scene: THREE.Group }> {
@@ -120,16 +121,19 @@ ${NOISE}`)
   float drop = floor((hz + 30.0) / 2.4);
   float front = uWallFront + dh(vec2(drop, 3.7)) * 1.6;
   float cleanW = smoothstep(front - 0.12, front + 0.12, vWPos.y);
-  gWet = cleanW * smoothstep(front + 3.0, front, vWPos.y) * step(-1.5, uWallFront) * step(uWallFront, 16.0);
+  float washing = step(-1.5, uWallFront) * step(uWallFront, 16.0);
+  gWet = cleanW * smoothstep(front + 3.6, front, vWPos.y) * washing;
   gDirt = dirtW * (1.0 - cleanW);
   #ifdef USE_AOMAP
     float aoS = texture2D(aoMap, vAoMapUv).r;
     gDirt = clamp(gDirt * mix(1.5, 0.85, aoS), 0.0, 1.0);
     diffuseColor.rgb *= mix(0.6, 1.0, aoS);
   #endif
-  vec3 grimeC = diffuseColor.rgb * vec3(0.3, 0.32, 0.28) + vec3(0.015, 0.03, 0.018) * streak;
+  vec3 grimeC = diffuseColor.rgb * vec3(0.24, 0.25, 0.22) + vec3(0.012, 0.028, 0.016) * streak;
   diffuseColor.rgb = mix(diffuseColor.rgb, grimeC, gDirt);
-  diffuseColor.rgb *= 1.0 - gWet * 0.32;
+  diffuseColor.rgb *= 1.0 - gWet * 0.45;
+  // the soft-wash front itself: a thin line of foam where the rinse meets the dirt
+  diffuseColor.rgb += vec3(0.42, 0.44, 0.42) * (1.0 - smoothstep(0.0, 0.1, abs(vWPos.y - front))) * washing * (0.6 + 0.4 * dn(vec2(hz * 9.0, uTime * 2.0)));
   roughnessFactor = mix(roughnessFactor, 0.35, gWet);
 #elif DIRT_KIND == 1
   // glass: milky film and dried runs; cleaned drop by drop (curtain wall) or by the pole (shopfront)
@@ -202,7 +206,7 @@ ${NOISE}`)
   float cleanS = r < floor(s) ? 1.0 : (r > floor(s) ? 0.0 : smoothstep(bx + 0.1, bx - 0.1, vWPos.x));
   if (s >= 3.0) cleanS = 1.0;
   gDirt = dust * (1.0 - cleanS);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.52, 0.5, 0.46), gDirt * 0.8);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.42, 0.4, 0.36), gDirt * 0.52);
   roughnessFactor = mix(roughnessFactor, 0.75, gDirt);
   metalnessFactor = mix(metalnessFactor, 0.0, gDirt);
 #endif
@@ -366,6 +370,24 @@ export class ProcessScene extends GLStage {
   private tmpS = new THREE.Vector3(1, 1, 1);
   /** reading for the HUD: water at the brush */
   tds = 62;
+  private meterCanvas = document.createElement('canvas');
+  private meterTex: THREE.CanvasTexture | null = null;
+  private meterShown = -1;
+
+  private drawMeter(ppm: number): void {
+    const g = this.meterCanvas.getContext('2d');
+    if (!g || !this.meterTex) return;
+    g.fillStyle = '#071014';
+    g.fillRect(0, 0, 256, 96);
+    g.fillStyle = ppm > 0 ? '#c47a2c' : '#8ec5b1';
+    g.font = '300 64px "Mona Sans", sans-serif';
+    g.textBaseline = 'middle';
+    g.fillText(String(ppm).padStart(3, '0'), 14, 52);
+    g.font = '500 22px "Mona Sans", sans-serif';
+    g.fillText('ppm', 170, 62);
+    this.meterTex.needsUpdate = true;
+    this.meterShown = ppm;
+  }
 
   constructor(canvas: HTMLCanvasElement, take: Take) {
     super(canvas, take, {
@@ -530,6 +552,8 @@ export class ProcessScene extends GLStage {
       glass_shop: shop,
       spandrel: dirtMaterial(1, S, { color: 0x2b353b, roughness: 0.2, metalness: 0.65, envMapIntensity: 1.1 }),
       solar,
+      roof: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.95, metalness: 0 }),
+      alu: new THREE.MeshStandardMaterial({ color: 0x737a7f, roughness: 0.42, metalness: 0.9 }),
     };
     // anchors near the east parapet
     const anchorGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 10);
@@ -554,24 +578,43 @@ export class ProcessScene extends GLStage {
     add(new THREE.BoxGeometry(5.5, 0.02, 2 * R_ARC), new THREE.MeshStandardMaterial({ color: 0x4d5254, roughness: 0.9 }), FORE.x1 + 3.2, 0.0, 0, false);
     // purification trailer and the hose up to the parapet
     const trailer = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(3.0, 1.5, 1.8), white);
-    body.position.y = 1.15;
+    const steelMat = new THREE.MeshStandardMaterial({ color: 0xc9ced1, roughness: 0.28, metalness: 0.85 });
+    const body = new THREE.Mesh(new RoundedBoxGeometry(2.6, 1.25, 1.7, 4, 0.12), white);
+    body.position.set(-0.2, 1.2, 0);
     body.castShadow = true;
-    trailer.add(body);
-    const tankGeo = new THREE.CylinderGeometry(0.32, 0.32, 1.3, 16);
-    for (const z of [-0.45, 0.45]) {
-      const t = new THREE.Mesh(tankGeo, brass);
-      t.position.set(0.9, 1.95, z);
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.14, 1.5), dark);
+    chassis.position.y = 0.5;
+    const drawbar = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.08, 0.08), dark);
+    drawbar.position.set(-2.1, 0.5, 0);
+    trailer.add(body, chassis, drawbar);
+    // two pressure vessels (carbon and mixed-bed resin), stainless with domed ends
+    for (const z of [-0.42, 0.42]) {
+      const t = new THREE.Mesh(new THREE.CapsuleGeometry(0.28, 0.9, 6, 20), steelMat);
+      t.position.set(1.2, 1.55, z);
       t.castShadow = true;
       trailer.add(t);
     }
-    const wheelGeo = new THREE.CylinderGeometry(0.35, 0.35, 0.22, 16);
-    for (const z of [-0.95, 0.95]) {
+    // hose reel on the side
+    const reel = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.11, 10, 32), new THREE.MeshStandardMaterial({ color: 0x1b1f22, roughness: 0.6 }));
+    reel.position.set(-0.5, 1.25, 0.92);
+    trailer.add(reel);
+    // the meter: reads the water at the brush, live
+    this.meterCanvas.width = 256;
+    this.meterCanvas.height = 96;
+    this.meterTex = new THREE.CanvasTexture(this.meterCanvas);
+    this.meterTex.colorSpace = THREE.SRGBColorSpace;
+    const meter = new THREE.Mesh(new THREE.PlaneGeometry(0.62, 0.23), new THREE.MeshBasicMaterial({ map: this.meterTex, toneMapped: false }));
+    meter.position.set(0.3, 1.45, 0.86);
+    trailer.add(meter);
+    this.drawMeter(62);
+    const wheelGeo = new THREE.CylinderGeometry(0.36, 0.36, 0.24, 20);
+    for (const z of [-0.88, 0.88]) {
       const wh = new THREE.Mesh(wheelGeo, dark);
       wh.rotation.x = Math.PI / 2;
-      wh.position.set(0, 0.35, z);
+      wh.position.set(0.2, 0.36, z);
       trailer.add(wh);
     }
+    this.disposables.push(this.meterTex);
     trailer.position.set(FORE.x1 - 2.2, 0, FORE.z0 + 2.0);
     this.scene.add(trailer);
     const hoseCurve = new THREE.CatmullRomCurve3([
@@ -823,6 +866,7 @@ export class ProcessScene extends GLStage {
     const fill = step < 2 ? 0 : step === 2 ? smooth(L(2)) : 1;
     this.hoseMat.uniforms.uFill!.value = fill;
     this.tds = step < 2 ? 62 : step === 2 ? Math.round(62 * (1 - smooth(clamp(L(2) / 0.8)))) : 0;
+    if (this.tds !== this.meterShown) this.drawMeter(this.tds);
 
     // roof: gutter vac (first 55%), downpipe flush, then the solar brush
     const roofL = step < 3 ? 0 : step === 3 ? L(3) : 1;

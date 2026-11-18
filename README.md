@@ -15,6 +15,7 @@ npm install && npm run dev
 ```
 
 Then open http://127.0.0.1:5323/ (the method statements page is at /services.html).
+Live: https://meniscus-delta.vercel.app (pushes to `main` on https://github.com/indi886/meniscus deploy it).
 Production: `npm run build && npm run preview` serves http://127.0.0.1:4323/.
 
 ## Pages and takes
@@ -22,10 +23,10 @@ Production: `npm run build && npm run preview` serves http://127.0.0.1:4323/.
 | # | Time | Take | Named camera move | Motion language |
 |---|---|---|---|---|
 | 0 | 04:40 | Preloader | Purge | real bytes (fonts, grime texture, the reel's buffered bytes) drive the reading from 062 ppm (Sydney mains) to 000 ppm through carbon, RO and mixed-bed resin; exits as a water sheet draining off under gravity. Nothing plays until it has fully cleared |
-| 1 | 05:12 | Hero | Locked-off fan stroke | WebGL pane over the commercial: dust and hard-water rings; a brass squeegee (channel, rubber, handle) cleans it in one three-pass fan stroke, pivoting on the blade's lower end at each edge; the bead of water ahead of the rubber refracts the film; drips run from the turns; the wordmark is pulled from a 75 % to a 125 % width channel as the last pass crosses each letter |
+| 1 | 05:12 | Hero | Locked-off fan stroke | WebGL pane over the commercial: dust and hard-water rings; a brass squeegee (channel, rubber, handle) cleans it in one three-pass fan stroke, pivoting on the blade's lower end at each edge; the bead of water ahead of the rubber refracts the film; drips run from the turns; the wordmark is pulled from a 75 % to a 125 % width channel as the last pass crosses each letter. Afterwards dew re-forms on the glass (8 to 30 s after each pixel was last wiped) and the pointer is a squeegee that wipes it away |
 | 2 | 06:40 | About | Polarizer turn | a circular polarizer travels across a sunrise window; turning it through 90° takes the reflected sky out by Malus's law (cos²θ, fully polarised at Brewster's angle, 56.7° for float glass) and the room behind appears; the disc finally opens to fill the frame |
 | 3 | 08:30 | Services | Overhead lane pass | WebGL: each service photo under the grime that service removes; scroll drives a 25° fan jet across it in boustrophedon lanes, top down (wet-dark behind the jet, drying light); the pointer is a second nozzle |
-| 4 | 11:00 → 17:20 | Process | Shade-chase orbit | **signature 3D take**: a corner building as a lit presentation model in a dark studio, under a solar-study dome of today's sun path. Eight scroll-scrubbed steps: survey (lasers, sun path), rig (anchors glint, ropes, exclusion zone), purify (hose fills, HUD reads 062 → 000 ppm), roof (gutter vac swallows leaves, downpipe flush, solar brushed row by row), façade (soft-wash fronts in 2.4 m drops), glass (rope technician descends four drops, then the shopfront by pole), ground (rotary surface cleaner in lanes), reading (golden hour, lights on, site report). The camera always keeps the building between itself and the sun, so the face being worked is the one in shade; tilt-shift depth of field |
+| 4 | 11:00 → 17:20 | Process | Shade-chase orbit | **signature 3D take**: a corner building modelled in Blender, shown as a lit presentation model in a dark studio, under a solar-study dome of today's sun path. Eight scroll-scrubbed steps: survey (lasers, sun path), rig (anchors glint, ropes, exclusion zone), purify (hose fills, HUD reads 062 → 000 ppm), roof (gutter vac swallows leaves, downpipe flush, solar brushed row by row), façade (soft-wash fronts in 2.4 m drops), glass (rope technician descends four drops, then the shopfront by pole), ground (rotary surface cleaner in lanes), reading (golden hour, lights on, site report). The camera always keeps the building between itself and the sun, so the face being worked is the one in shade; tilt-shift depth of field |
 | 5 | 17:48 | Work | Rain-pane traverse and plunge | WebGL: a southerly buster beads the glass; each large drop is a lens holding a project upside down; it sticks, slips under gravity (stick-slip), swallows beads and leaves a trail; the camera plunges in, the image collapses through focus and rights itself, holds, and pulls back out |
 | 6 | 19:05 | Testimonials | Fan-down tilt | a blade fans down each quote: lines below it are still wet (75 % width, heavier, blurred, behind condensation over a blue-hour city), lines above it dry at 125 % |
 | 7 | 19:40 | Team | Truck along the glazing rack | each portrait behind a glazing sample (acid-etched, reeded, grey tint, one-way mirror) that slides away on hover, focus, or (touch) at the middle of the screen; the rack trucks sideways |
@@ -104,6 +105,35 @@ Runtime rules this code keeps:
 - Reduced motion: no smooth scroll, no intro stroke (the pane starts clean), no magnetic effects,
   instant reveals; the takes still scrub with the scroll.
 
+## The building (Blender)
+
+`scripts/blender/build_building.py` models the process take's corner building procedurally in
+headless Blender 5.2, in three.js coordinates so the dirt shader's world-space logic (drops on the
+east face, soft-wash fronts, solar rows, gutters) lines up exactly:
+
+```bash
+"C:/Program Files/Blender Foundation/Blender 5.2/blender.exe" -b -P scripts/blender/build_building.py -- "C:/Users/indik/meniscus"
+```
+
+- 1920s Hawkesbury-sandstone corner block: rusticated ground floor with recessed joints and a plinth
+  course; ashlar upper floors with punched windows in real 350 mm reveals (architraves, projecting
+  sills, keystones, bronze frames with mullion and transom, inset glass); quoins on every stone
+  corner; a string course; a three-step cornice; a parapet with aluminium coping
+- a 2000s refit on the east face: unitised curtain wall in 1.257 m modules with fritted spandrels,
+  pressure-capped mullions and transoms between full-height stone piers; a recessed bronze shopfront
+  with clerestory, a blank sign band and a steel blade canopy on tie rods
+- roof: membrane deck, galvanised box gutters with outlets, a solar array on aluminium racking, two
+  condensers with fan grilles and louvres, a lift overrun, a hatch; a downpipe with rainhead and
+  brackets
+- bevelled edges on stone, trim and metal; 54,680 triangles; Draco GLB **455 KB**
+  (`public/media/model/building.glb`)
+- ambient occlusion baked in Cycles (2048², 1.6 m distance) into one UV atlas →
+  `public/media/model/building-ao.webp`; three.js applies it as `aoMap`, and the dirt shader also
+  darkens crevices with it and lets grime gather where the occlusion is high
+- material names are the contract with `src/scenes/process.ts`, which swaps them for the dirt
+  materials (stone, trim, base → render dirt; glass_cw, glass_win, glass_shop, spandrel → glass
+  dirt; solar → dust) and keeps the rest
+
 ## Media pipeline (fal.ai)
 
 - **Stills**: Seedream 4.5 (`fal-ai/bytedance/seedream/v4.5/text-to-image`) at 2560×1440 (portraits
@@ -151,6 +181,9 @@ each take's state on a phone.
 | 3 | Hero pane stayed dirty: the paint passes were auto-cleared before every render (and the adaptive DPR loop could resize the mask) | `autoClear = false` while painting (hero mask and the services pointer nozzle); mask sized from CSS pixels and copied on resize |
 | 3 | Services dirty glass looked like a flat grey filter; shaded façades went muddy | dirt film modulated by the grime texture, dried runs and ring highlights; a soft fill light from the camera side |
 | 3 | Phone: HUD rows collided; About crowded; services sheet ran into the HUD; contact copy on the brightest reflection | phone HUD shows timecode and reading only; About drops the data grid; services sheet trimmed; a dark falloff at the foot of the contact plate |
+| 4 | The procedural box building was what held the take back | replaced by the Blender model above, AO baked, verified in every framing on desktop and phone |
+| 5 | With the model: the roof membrane and silver coping read as a flat light slab; dust hid the solar cells; the façade wash line was faint; the trailer was a white box; on phones the site report covered the building | dark membrane and darker aluminium; dust lets the cells through; a darker soot tone, a longer wet band and a foam line at the wash front; a rounded trailer with two stainless pressure vessels, a hose reel and a meter that reads the water live (062 → 000 ppm); the report docks at the foot of the frame on phones |
+| 5 | The hero only did something once | dew re-forms on the glass after the stroke and the pointer wipes it (desktop pointers only, never with reduced motion) |
 
 Final state: `npm run build` passes (strict TypeScript); `node scripts/smoke-prod.mjs` against the
 production preview wheel-scrolls both pages on desktop, phone (390 px) and reduced motion with **0

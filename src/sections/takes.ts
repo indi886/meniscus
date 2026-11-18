@@ -124,6 +124,7 @@ export function initProcessUI(lens: () => number): () => void {
   const head = take.el.querySelector<HTMLElement>('.process__head')!;
   const report = take.el.querySelector<HTMLElement>('[data-report]')!;
   const rail = take.el.querySelector<HTMLElement>('[data-rail]')!;
+  const narrow = matchMedia('(max-width: 860px)').matches;
   // shaded side: steps after solar noon (12:40) sit on the right
   steps.forEach((s, i) => s.classList.toggle('is-right', i >= 3 && i !== 7));
   let tds = 62;
@@ -152,7 +153,8 @@ export function initProcessUI(lens: () => number): () => void {
     });
     const r = band(0.905, 0.95, p);
     report.style.opacity = r.toFixed(3);
-    report.style.transform = `translate3d(0, calc(-50% + ${((1 - r) * 20).toFixed(1)}px), 0)`;
+    // phones dock the report at the foot of the frame, desktop centres it on the shaded side
+    report.style.transform = narrow ? `translate3d(0, ${((1 - r) * 20).toFixed(1)}px, 0)` : `translate3d(0, calc(-50% + ${((1 - r) * 20).toFixed(1)}px), 0)`;
     rail.style.transform = `scaleY(${p.toFixed(4)})`;
   }, 40);
   return () => {

@@ -14,14 +14,18 @@ import * as THREE from 'three';
 import { GLStage } from '../gl/stage';
 import type { Take } from '../core/scroll';
 import { loadTexture } from '../core/assets';
-import { clamp, smooth, lerp } from '../core/util';
+import { clamp, smooth, lerp, isTouch, prefersReducedMotion } from '../core/util';
+
+/** seconds per unit in the mask's wipe-time channel */
+const STAMP = 1024;
 import { pointer } from '../core/cursor';
 
 const VERT = /* glsl */ `
 varying vec2 vUv;
 void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
 
-// Paints the blade's footprint into the wipe mask: R = cleaned, G = time it was cleaned (s / 16).
+// Paints the blade's footprint into the wipe mask: R = cleaned, G = time it was last wiped (s / 1024,
+// max-blended so the latest wipe wins; half float keeps that to about half a second).
 const PAINT_FRAG = /* glsl */ `
 uniform vec4 uSeg; // a.xy, b.xy in aspect-corrected units (x * aspect)
 uniform float uHalfW; uniform float uAspect; uniform float uStamp;
@@ -40,7 +44,7 @@ uniform sampler2D tFilm; uniform sampler2D tGrime; uniform sampler2D tMask;
 uniform vec2 uRes; uniform float uTime; uniform float uIntroT; uniform float uFilmAspect; uniform float uFilmOn;
 uniform vec4 uBlade; // centre xy (aspect units), angle (rad from vertical), half length
 uniform float uBladeOn; uniform vec2 uDir; // travel direction (unit, aspect units)
-uniform float uScroll; uniform vec2 uPointer;
+uniform float uScroll; uniform vec2 uPointer; uniform float uDew;
 uniform vec4 uDrips[3]; // x, y-start, t-start, size
 varying vec2 vUv;
 
@@ -71,7 +75,7 @@ void main() {
   vec2 p = vec2(uv.x * aspect, uv.y);
   vec4 mask = texture2D(tMask, uv);
   float clean = mask.r;
-  float age = uIntroT - mask.g * 16.0;
+  float age = uIntroT - mask.g * 1024.0;
   float wet = clean * exp(-max(age, 0.0) * 1.6) * step(0.0005, mask.g + clean * 0.0);
 
   // grime: dust film and dried rings from the texture, varied with a slow noise so it never tiles
@@ -96,6 +100,17 @@ void main() {
   col = col * (1.0 - dirt * 0.42) + dustCol * dirt * 0.36;
   // hard-water rings catch the light a little brighter than the film
   col += vec3(0.85, 0.82, 0.76) * smoothstep(0.55, 0.9, g) * (1.0 - clean) * 0.22;
+  // dew: before sunrise the clean glass slowly mists over again (8 to 30 s after it was last wiped):
+  // the image softens, lifts and cools, and micro-droplets catch the light. The pointer wipes it.
+  float dew = uDew * clean * smoothstep(8.0, 30.0, age) * 0.62;
+  if (dew > 0.002) {
+    vec3 fog = filmSoft(uv, 8.0);
+    float fl = dot(fog, vec3(0.299, 0.587, 0.114));
+    fog = mix(fog, vec3(fl), 0.4) * 0.74 + vec3(0.36, 0.41, 0.45) * 0.32;
+    float beads = smoothstep(0.86, 0.97, noise(uv * uRes / 3.2)) + smoothstep(0.9, 0.99, noise(uv * uRes / 9.0 + 3.7)) * 0.6;
+    fog += vec3(0.86, 0.92, 0.96) * beads * 0.14;
+    col = mix(col, fog, dew);
+  }
   // wet sheen
   col += vec3(0.75, 0.86, 0.9) * wet * 0.05 * (0.5 + flow.x);
 
@@ -249,6 +264,9 @@ export class HeroScene extends GLStage {
   private videoTex: THREE.VideoTexture;
   introT = -1;
   private last: BladePose | null = null;
+  /** dew and the pointer's squeegee: pointer devices only, never with reduced motion */
+  private dewOn = !isTouch() && !prefersReducedMotion();
+  private lastPtr: { x: number; y: number } | null = null;
   /** blade position in screen pixels for the DOM (wordmark), or null */
   bladePx: { x: number; y: number; pass: number } | null = null;
   scrollP = 0;
@@ -282,6 +300,7 @@ export class HeroScene extends GLStage {
         uScroll: { value: 0 },
         uPointer: { value: new THREE.Vector2() },
         uDrips: { value: [new THREE.Vector4(), new THREE.Vector4(), new THREE.Vector4()] },
+        uDew: { value: 0 },
       },
     });
     const mesh = new THREE.Mesh(quad, this.mat);
@@ -391,7 +410,7 @@ export class HeroScene extends GLStage {
     const u = this.paintMat.uniforms;
     u.uAspect!.value = asp;
     u.uHalfW!.value = 0.018;
-    u.uStamp!.value = clamp(t / 16);
+    u.uStamp!.value = clamp(t / STAMP);
     for (let i = 1; i <= steps; i++) {
       const k = i / steps;
       const x = lerp(a.x, b.x, k), y = lerp(a.y, b.y, k), ang = lerp(a.a, b.a, k);
@@ -439,6 +458,18 @@ export class HeroScene extends GLStage {
         }
         this.bladePx = pose.on ? this.bladePx : null;
       }
+      // after the stroke: dew forms, and the pointer is a squeegee that wipes it away
+      if (this.dewOn && t > STROKE.end + 0.4) {
+        u.uDew!.value = 1;
+        const r = this.canvas.getBoundingClientRect();
+        const inside = pointer.active && pointer.x >= r.left && pointer.x <= r.right && pointer.y >= r.top && pointer.y <= r.bottom;
+        const fresh = performance.now() - pointer.moved < 100;
+        if (inside && fresh) {
+          const pt = { x: (pointer.x - r.left) / r.width, y: 1 - (pointer.y - r.top) / r.height };
+          if (this.lastPtr) this.wipe(this.lastPtr, pt, t);
+          this.lastPtr = pt;
+        } else if (!inside) this.lastPtr = null;
+      }
       // drips where the blade turned
       const drips = u.uDrips!.value as THREE.Vector4[];
       const t1 = STROKE.start + STROKE.pass;
@@ -447,6 +478,34 @@ export class HeroScene extends GLStage {
       drips[1]!.set(0.035, 0.28, t2 + 0.2, 7);
       drips[2]!.set(0.71, 0.86, t1 - 0.25, 5);
     }
+  }
+
+  /** the pointer's blade: a short squeegee held broadside to its own motion */
+  private wipe(a: { x: number; y: number }, b: { x: number; y: number }, t: number): void {
+    const asp = this.aspect;
+    const dx = (b.x - a.x) * asp, dy = b.y - a.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-4) return;
+    const r = this.renderer;
+    const auto = r.autoClear;
+    r.autoClear = false;
+    r.setRenderTarget(this.maskRT);
+    const u = this.paintMat.uniforms;
+    u.uAspect!.value = asp;
+    u.uHalfW!.value = 0.012;
+    u.uStamp!.value = clamp(t / STAMP);
+    // blade direction: perpendicular to the stroke
+    const nx = -dy / dist, ny = dx / dist;
+    const L = 0.075;
+    const steps = Math.min(24, Math.max(1, Math.ceil(dist / 0.008)));
+    for (let i = 1; i <= steps; i++) {
+      const k = i / steps;
+      const cx = (a.x + (b.x - a.x) * k) * asp, cy = a.y + (b.y - a.y) * k;
+      (u.uSeg!.value as THREE.Vector4).set(cx - nx * L, cy - ny * L, cx + nx * L, cy + ny * L);
+      r.render(this.paintScene, this.camera);
+    }
+    r.setRenderTarget(null);
+    r.autoClear = auto;
   }
 
   private clearMaskSoft(): void {

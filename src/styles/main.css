@@ -519,7 +519,8 @@ html.js .is-intro .wordmark { opacity: 1; transition: opacity 0.4s; }
   .services__frame { height: 31svh; }
   .process__head { width: auto; right: var(--gutter); top: calc(var(--hud-h) + 9vh); }
   .process__steps li, .process__steps li.is-right { left: var(--gutter); right: var(--gutter); width: auto; }
-  .process__report { left: var(--gutter); right: var(--gutter); width: auto; }
+  .process__report { left: var(--gutter); right: var(--gutter); width: auto; top: auto; bottom: calc(var(--gutter) * 0.55 + 3.4em); transform: none; padding: 1rem 1.1rem; }
+  .process__report table { font-size: 0.76rem; }
   .work__head { width: auto; right: var(--gutter); }
   .proj { left: var(--gutter); right: var(--gutter); width: auto; }
   .team__head .display, .team__head p { grid-column: 1 / 13; }
@@ -585,3 +586,8 @@ html:has(.ms) { background: var(--etch); color-scheme: light; }
 /* the copy that surfaces in the forecourt sits on a darker foot of the plate, never on the brightest reflection */
 .contact__tilt::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 38%, rgba(6, 9, 12, 0.72) 74%, #06090c 100%); pointer-events: none; }
 .contact__head { text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6); }
+
+/* the dew hint: only where there is a pointer to wipe with, and never with reduced motion */
+.hero__dew { position: absolute; z-index: 3; right: var(--gutter); bottom: calc(clamp(96px, 17vh, 190px) + 1.7em); font-family: var(--serif); font-style: italic; font-size: 0.95rem; color: rgba(228, 234, 230, 0.78); max-width: 24ch; text-align: right; display: none; }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) { .hero__dew { display: block; } }
+@media (max-width: 860px) { .hero__dew { display: none; } }
