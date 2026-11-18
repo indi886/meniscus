@@ -26,7 +26,7 @@ Production: `npm run build && npm run preview` serves http://127.0.0.1:4323/.
 | 1 | 05:12 | Hero | Locked-off fan stroke | WebGL pane over the commercial: dust and hard-water rings; a brass squeegee (channel, rubber, handle) cleans it in one three-pass fan stroke, pivoting on the blade's lower end at each edge; the bead of water ahead of the rubber refracts the film; drips run from the turns; the wordmark is pulled from a 75 % to a 125 % width channel as the last pass crosses each letter. Afterwards dew re-forms on the glass (8 to 30 s after each pixel was last wiped) and the pointer is a squeegee that wipes it away |
 | 2 | 06:40 | About | Polarizer turn | a circular polarizer travels across a sunrise window; turning it through 90° takes the reflected sky out by Malus's law (cos²θ, fully polarised at Brewster's angle, 56.7° for float glass) and the room behind appears; the disc finally opens to fill the frame |
 | 3 | 08:30 | Services | Overhead lane pass | WebGL: each service photo under the grime that service removes; scroll drives a 25° fan jet across it in boustrophedon lanes, top down (wet-dark behind the jet, drying light); the pointer is a second nozzle |
-| 4 | 11:00 → 17:20 | Process | Shade-chase orbit | **signature 3D take**: a corner building modelled in Blender, shown as a lit presentation model in a dark studio, under a solar-study dome of today's sun path. Eight scroll-scrubbed steps: survey (lasers, sun path), rig (anchors glint, ropes, exclusion zone), purify (hose fills, HUD reads 062 → 000 ppm), roof (gutter vac swallows leaves, downpipe flush, solar brushed row by row), façade (soft-wash fronts in 2.4 m drops), glass (rope technician descends four drops, then the shopfront by pole), ground (rotary surface cleaner in lanes), reading (golden hour, lights on, site report). The camera always keeps the building between itself and the sun, so the face being worked is the one in shade; tilt-shift depth of field |
+| 4 | 11:00 → 17:20 | Process | Shade-chase orbit | **signature 3D take**: a corner building modelled in Blender, standing in a real street on a clear afternoon: a physical (Preetham) blue sky with today's Sydney sun, reflection probes made from that sky and from the finished street, aerial haze, neighbouring blocks, plane trees moving in the wind, parked cars and signal-phased traffic, and a five-person rope-access crew (real human models) on the walls, with today's sun path drawn over the block as a solar study. Eight scroll-scrubbed steps: survey (lasers, sun path), rig (anchors glint, ropes, exclusion zone), purify (hose fills, HUD reads 062 → 000 ppm), roof (gutter vac swallows leaves, downpipe flush, solar brushed row by row), façade (soft-wash fronts in 2.4 m drops), glass (four technicians, one per drop: waiting under the parapet, descending with the squeegee as the clean line comes down, then detailing the low panes; the camera follows the crew, then the shopfront by pole), ground (rotary surface cleaner in lanes), reading (late sun, office and street lights on, site report). The camera always keeps the building between itself and the sun, so the face being worked is the one in shade |
 | 5 | 17:48 | Work | Rain-pane traverse and plunge | WebGL: a southerly buster beads the glass; each large drop is a lens holding a project upside down; it sticks, slips under gravity (stick-slip), swallows beads and leaves a trail; the camera plunges in, the image collapses through focus and rights itself, holds, and pulls back out |
 | 6 | 19:05 | Testimonials | Fan-down tilt | a blade fans down each quote: lines below it are still wet (75 % width, heavier, blurred, behind condensation over a blue-hour city), lines above it dry at 125 % |
 | 7 | 19:40 | Team | Truck along the glazing rack | each portrait behind a glazing sample (acid-etched, reeded, grey tint, one-way mirror) that slides away on hover, focus, or (touch) at the middle of the screen; the rack trucks sideways |
@@ -134,6 +134,52 @@ east face, soft-wash fronts, solar rows, gutters) lines up exactly:
   materials (stone, trim, base → render dirt; glass_cw, glass_win, glass_shop, spandrel → glass
   dirt; solar → dust) and keeps the rest
 
+## The street, the trees, the crew (Blender + fal image-to-3D)
+
+Everything around the building is built for the take, in the same three.js coordinates:
+
+```bash
+B="C:/Program Files/Blender Foundation/Blender 5.2/blender.exe"
+"$B" -b -P scripts/blender/build_street.py -- "C:/Users/indik/meniscus"   # street.glb
+node scripts/tree-tex.mjs "[[280,340,600],[1120,120,600],[1240,760,640],[180,800,640]]" "[985,1500,80,380]"
+node scripts/bark-tex.mjs
+"$B" -b -P scripts/blender/build_trees.py -- "C:/Users/indik/meniscus"    # trees.glb
+"$B" -b -P scripts/blender/clean_gen.py -- <fal.glb> <out.glb> '<json>'    # worker, sedan, van
+```
+
+- **Street** (`build_street.py`, 6.3k triangles, 806 KB): footpaths and kerbs with gutter faces, a
+  two-lane street with parking lanes and a cross street, lane and edge lines, a zebra crossing, stop
+  lines, lamps, traffic signals, bollards and bins; two parks with gravel paths and benches; the
+  neighbours (a four-storey 1960s office, a three-storey brick warehouse, terrace shops, glass
+  offices) set back across service lanes so the site still reads, a middle ring of blocks and a low
+  skyline 190–360 m out for the haze. Façades are generated straight-on photographs mapped at real
+  scale with world-space UVs; parapets are copings around membrane roofs with plant on them.
+- **Trees** (`build_trees.py`, 555 KB, two London-plane variants): parallel-transport tube meshes for
+  trunk and leader (with a root flare), limbs bending toward the light and sub-branches; seamless
+  plane-tree camo bark from periodic domain-warped noise (`bark-tex.mjs`); foliage cards cut from a
+  generated photograph of a plane tree on white (`tree-tex.mjs` keys the background out and gives
+  each card a ragged leafy rim). Each card is written twice with opposite winding so both faces keep
+  an outward normal, normals are bent toward the crown's ellipsoid so the canopy shades as a volume,
+  and a per-card vertex colour darkens the inner and lower crown. In three.js: instanced, wind sway
+  and leaf flutter in the vertex shader (shared with a custom depth material, so the dappled shadows
+  move too), light through the leaves when looking toward the sun, alpha-tested shadows.
+- **Crew, sedan, van** (`clean_gen.py`): fal image-to-3D (Hunyuan 3D v3.1 Pro) GLBs, cleaned in
+  Blender: the importer's rotation baked, scaled to real size (crew 1.78 m, sedan 4.8 m, van 4.75 m),
+  decimated (crew 36k, vehicles 7.2k triangles), textures to 1024 WebP, Draco. The vehicles carried
+  real-looking badges and a number plate; `ortho_views.py` renders measured orthographic views to
+  locate them, and the faces inside each box get the UV of a clean neighbouring face, so the badge
+  prints as paint. The technician's squeegee arm is skinned in `process.ts` (weights from position
+  along the shoulder → hand axis, masked to the arm's side) so it fans an S-stroke across the glass.
+- **Traffic**: closed-form in time. Each car approaches from 230 m out, queues at its stop line on
+  red, pulls away on green and is 300 m down the road in the haze before the 60 s cycle wraps; the
+  two streets get green alternately, so nothing meets in the junction. Parked cars are repainted per
+  instance (the shader swaps only the saturated dark paint, keeping glass, chrome and tyres).
+- **Light**: Preetham sky (gain and a polariser-style saturation patched in, since the post chain
+  does the tone mapping); three PMREM probes of that sky for the working day, at 0.4 intensity so
+  shade reads about a quarter of the sunlit side; a one-off cube capture of the finished street,
+  prefiltered, for the building's glass; FogExp2 haze in the horizon colour. The 2048 shadow map
+  fits each shot (tight for close-ups, wide for aerials) with its centre snapped to whole texels.
+
 ## Media pipeline (fal.ai)
 
 - **Stills**: Seedream 4.5 (`fal-ai/bytedance/seedream/v4.5/text-to-image`) at 2560×1440 (portraits
@@ -154,10 +200,16 @@ east face, soft-wash fronts, solar rows, gutters) lines up exactly:
 |---|---|---|---|---|
 | 29 stills (7 hero keyframes, 7 services, 6 projects, 2 about, 4 portraits, 1 contact, 2 textures) | Seedream 4.5 | 29 images | $0.04 / image | $1.16 |
 | 7 hero clips, 1080P | MiniMax H3 Max | 35 s requested (36.2 s delivered) | $0.0375 / s | $1.31 to $1.36 |
-| **Total** | | | | **≈ $2.47 to $2.52**, inside the $5 budget |
+| Street round: 13 references (4 façades, asphalt, tree, sedan, SUV, van, 4 crew poses) | Seedream 4.5 | 13 images | $0.04 / image | $0.52 |
+| Street round: crew, sedan, van, tree as 3D | Hunyuan 3D v3.1 Pro | 4 generations | $0.015 / unit (units per job not published) | ≈ $1.20 to $1.80 |
+| **Total** | | | | **≈ $4.2 to $4.8**; the fal balance ran out after these jobs |
 
 Request ids are in `assets-src/manifest-*.txt`. These are estimates from the published rates; the
-fal dashboard has the final figure.
+fal dashboard has the final figure. Of the street round, the SUV still was cut off (unused), the
+generated tree mesh was a bare stick (replaced by the Blender trees, which use its reference photo),
+and the T-pose crew still (`assets-src/street/worker-tpose.jpg`) is ready for a rigged, walking
+ground crew once there is fal credit again (about $0.40 for image-to-3D and $0.08 for rigging with
+walk and idle clips).
 
 ## Verification
 
@@ -184,11 +236,24 @@ each take's state on a phone.
 | 4 | The procedural box building was what held the take back | replaced by the Blender model above, AO baked, verified in every framing on desktop and phone |
 | 5 | With the model: the roof membrane and silver coping read as a flat light slab; dust hid the solar cells; the façade wash line was faint; the trailer was a white box; on phones the site report covered the building | dark membrane and darker aluminium; dust lets the cells through; a darker soot tone, a longer wet band and a foam line at the wash front; a rounded trailer with two stainless pressure vessels, a hose reel and a meter that reads the water live (062 → 000 ppm); the report docks at the foot of the frame on phones |
 | 5 | The hero only did something once | dew re-forms on the glass after the stroke and the pointer wipes it (desktop pointers only, never with reduced motion) |
+| 6 | Real street, first light: everything milky, shade nearly as bright as sun | the sky probe was lighting the shade at full strength; probes at 0.4, exposure 1.15 |
+| 6 | Roofs read as white slabs; the neighbours towered over the site 4 m away; the lawn covered the east street south of the junction | parapet copings were solid slabs over the whole roof → rims round a dark membrane; neighbours set back across lanes and cut to 3–4 storeys; lawn stops at the footpath, a second park across the street |
+| 6 | Almost no sky in frame (camera looked down; 150 m skyline and 60 m towers behind) | establishing, survey and reading shots lowered with a wider establishing lens; skyline ring lowered and pushed to 190–360 m, nearest towers cut to 30–36 m; polariser-style sky saturation |
+| 6 | Curtain wall reflected only sky; one technician teleporting between drops | a cube capture of the finished street for the building's glass; a four-person crew, one per drop, with the camera following the active drop |
+| 6 | 32 ms frames on Iris Xe (instanced 24k-triangle cars drawn twice, hidden instances included; 4096 shadow map) | vehicles to 7.2k triangles, slimmer tree wood, 2048 shadow map fitted to each shot: 17.5 ms, on par with the old studio take |
+| 7 | The crew only appeared in the glass step; trailer blown out | the crew hangs on its rigged lines under the parapet from the rig step; trailer body darkened and roughened |
 
 Final state: `npm run build` passes (strict TypeScript); `node scripts/smoke-prod.mjs` against the
 production preview wheel-scrolls both pages on desktop, phone (390 px) and reduced motion with **0
-console errors, 0 warnings, 0 failed requests**, all four WebGL takes up; every take holds 60 fps
-(16.7 ms average) in the headless GPU captures on this machine's Iris Xe; ready in about 3.5 s.
+console errors, 0 warnings, 0 failed requests**, all four WebGL takes up; the other takes hold 60
+fps (16.7 ms average) in the headless GPU captures on this machine's Iris Xe, and the street take
+runs at 17.5 ms average with the adaptive resolution between 0.55 and 0.76 (`node
+scripts/proc-perf.mjs`; `scripts/proc-cost.mjs` toggles features to measure each one's cost); the
+page is ready in about 3.5 s, the street take about 15 s later in the background.
 
 Not verified: real Safari / iOS (WebKit on Windows can't render the variable-font axes), a real
 low-end phone (the poster stills and `?diag` exist for that).
+
+Not done: a walking ground crew (the purification trailer and the surface cleaner run unattended).
+The crew model is posed on its rope seat; a standing, rigged technician needs the T-pose still
+turned into a mesh and rigged, which needs fal credit.

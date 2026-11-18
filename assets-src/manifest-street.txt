@@ -1,0 +1,18 @@
+worker-rope 01a1ef07-a86b-77b1-89e7-1c6d65728df8 https://v3b.fal.media/files/b/0ab2f86b/ACD5w_CI0FIE3CaLKZ1b__abd2bf1317e147548f774178cea9ad2d.jpg
+worker-apose 01a1ef07-a8b3-7f43-9f45-c83dad5693c2 https://v3b.fal.media/files/b/0ab2f86b/xbi-RHyBPcqdfe0yvFE4G_f5ccc8d414bd436ca457e1bf10dbe2a0.jpg
+van 01a1ef07-a8b2-7d42-9d13-39384e30471e https://v3b.fal.media/files/b/0ab2f86a/J2xtbjAOvDDK9j6qbBn6w_a213a7bf896d400dbe33c2a97155fade.jpg
+sedan 01a1ef07-a8b4-7e42-81c7-095eb1c4a4a4 https://v3b.fal.media/files/b/0ab2f86a/VRaiaTaba7fQNY16WzgE3_4b08e2bba7734dfbaa6cff3dd82ec856.jpg
+suv 01a1ef07-a874-7762-8770-6c5fc1ba129c https://v3b.fal.media/files/b/0ab2f86a/yqJnAA4crXgJtDt4Iiz1p_bcff2fbb07b64f028372d8c57e888ebf.jpg
+tree 01a1ef07-a8b5-71f3-a501-664ac4f0cb5c https://v3b.fal.media/files/b/0ab2f86a/_Ne4qzOleikmNxFi-r1Y__621f1d9f696e4f71a0c01ee3135eb7a5.jpg
+asphalt 01a1ef07-a8b3-7b51-a099-aec22290cab8 https://v3b.fal.media/files/b/0ab2f86a/UOBYIYhwWdk3il2raFcEO_e2ed14a39d0d4d9c81bea82b31b7d667.jpg
+facade-glass 01a1ef07-a8b6-7d21-988e-eeff28c661ec https://v3b.fal.media/files/b/0ab2f86b/wc3j1wyl02V2Ll0XGTxVG_be598f2f96974e76a864396c8034be16.jpg
+facade-concrete 01a1ef07-ce80-7a70-89c1-ce90d2ebc336 https://v3b.fal.media/files/b/0ab2f86b/Ofkp5cml-3rpftKv0uyFs_cd4f8121ed5242a09ac40bf2a8578033.jpg
+facade-brick 01a1ef07-d001-70a1-a76b-1aeb6b55b93e https://v3b.fal.media/files/b/0ab2f86c/f-d-geXvFGaxAZ5CsjlDV_481c32a4777b4377a919f7e15bbe7a1b.jpg
+facade-terrace 01a1ef07-ce7d-7272-8429-2a3436f46c5d https://v3b.fal.media/files/b/0ab2f86b/zeBR7bHyoruJ8COkrgrrs_bfdbdabe3dbe462881cc05eb95e549d4.jpg
+# image-to-3d (Hunyuan 3D v3.1 Pro)
+3d-rope 01a1ef09-94f7-76c2-8556-da50e3114c27
+3d-van 01a1ef09-949c-75f1-a2ae-da5def57763c
+3d-sedan 01a1ef09-94a9-7361-b179-f7d02b09958a
+3d-tree 01a1ef09-94aa-72a2-98fa-cff3af8e12d2
+worker-apose-b 01a1ef08-c53e-7471-9c37-be0ef06822e4
+worker-tpose (Seedream 4.5, file assets-src/street/worker-tpose.jpg) https://v3b.fal.media/files/b/0ab2f87a/bJl82GTYD4l7_I6DfdaDl_b47693d4481744318f25bcb1dba5d172.jpg

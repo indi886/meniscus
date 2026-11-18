@@ -1,4 +1,8 @@
 // TAKE 4 · Shade-chase orbit. The signature 3D take.
+// A real street on a clear afternoon: Preetham sky with the true Sydney sun for today, reflection
+// probes made from that sky, aerial haze, the neighbouring blocks, plane trees (Blender, with real
+// foliage cut from a photograph) moving in the wind, parked cars and signal-phased traffic, and a
+// rope-access technician (image-to-3D, cleaned in Blender) whose squeegee arm is skinned here.
 // One corner building (curtain-wall glass and a shopfront on the east face, sandstone render with
 // punched windows elsewhere, box gutters behind the parapet, a solar array on the roof, a paved
 // forecourt) is cleaned the way Meniscus cleans every building: top down, in the shade, signed off
@@ -19,6 +23,7 @@ import { sunAt } from '../core/sun';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
 
 /** The Blender model (Draco). Phones drop requests, so it retries twice. */
 function loadModel(url: string, tries = 3): Promise<{ scene: THREE.Group }> {
@@ -266,28 +271,217 @@ void main() {
 #include <fog_fragment>
 }`;
 
-// sky dome: the afternoon, warming toward gold as the sun drops
-const SKY_FRAG = /* glsl */ `
-uniform vec3 uSunDir; uniform float uWarm; varying vec3 vDir;
-void main() {
-  vec3 d = normalize(vDir);
-  float h = clamp(d.y, -0.3, 1.0);
-  // a dark studio cyclorama: blue-black overhead, a low band of light at the horizon
-  vec3 zen = vec3(0.012, 0.022, 0.036);
-  vec3 hor = mix(vec3(0.07, 0.11, 0.14), vec3(0.2, 0.11, 0.07), uWarm);
-  vec3 c = mix(hor, zen, pow(smoothstep(-0.05, 0.75, h), 0.7));
-  // the sun's side of the sky glows, warmer and wider as it drops
-  vec2 dh = normalize(d.xz + 1e-4), sh = normalize(uSunDir.xz + 1e-4);
-  float side = pow(max(dot(dh, sh), 0.0), 3.0);
-  c += mix(vec3(0.16, 0.22, 0.26), vec3(0.75, 0.38, 0.16), uWarm) * side * smoothstep(0.6, -0.02, h) * smoothstep(-0.25, 0.02, h);
-  float sd = max(dot(d, uSunDir), 0.0);
-  c += vec3(1.0, 0.86, 0.62) * (pow(sd, 1200.0) * 40.0 + pow(sd, 24.0) * (0.12 + uWarm * 0.4));
-  c = mix(c, vec3(0.008, 0.012, 0.016), smoothstep(-0.02, -0.25, h));
-  gl_FragColor = vec4(c, 1.0);
-}`;
-const SKY_VERT = /* glsl */ `
-varying vec3 vDir;
-void main() { vDir = position; vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }`;
+// ---------------------------------------------------------------------------------------------
+// the street around the site (scripts/blender/build_street.py lays it out in this same space)
+const ROAD_Y = -0.15;
+
+/** Ground layers from the street model get a little life: mowing stripes and dry patches on the
+ *  lawns, slab joints and wear on the footpaths. World-space, so it never tiles visibly. */
+function patchGround(m: THREE.MeshStandardMaterial, kind: 'lawn' | 'footpath' | 'gravel'): void {
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vGPos;')
+      .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\n  vGPos = (modelMatrix * vec4(transformed, 1.0)).xyz;');
+    const body =
+      kind === 'lawn'
+        ? `
+  vec2 q = vGPos.xz;
+  float stripe = step(0.5, fract(q.x / 3.2));
+  float dry = smoothstep(0.55, 0.85, dfbm(q * 0.06 + 3.0));
+  float clump = dfbm(q * 1.7);
+  vec3 g = diffuseColor.rgb * mix(0.86, 1.12, stripe) * mix(0.82, 1.15, clump);
+  g = mix(g, vec3(0.32, 0.31, 0.13), dry * 0.45);
+  diffuseColor.rgb = g;`
+        : kind === 'footpath'
+          ? `
+  vec2 q = vGPos.xz / 1.2;
+  vec2 f = fract(q);
+  float joint = smoothstep(0.0, 0.025, min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y)));
+  float tone = dh(floor(q)) * 0.1 + dfbm(vGPos.xz * 0.9) * 0.16;
+  float stain = smoothstep(0.62, 0.9, dfbm(vGPos.xz * 0.21 + 7.0));
+  diffuseColor.rgb *= (0.9 + tone) * mix(0.72, 1.0, joint) * (1.0 - stain * 0.22);`
+          : `
+  float n = dfbm(vGPos.xz * 3.1) * 0.6 + dh(floor(vGPos.xz * 40.0)) * 0.4;
+  diffuseColor.rgb *= 0.78 + n * 0.4;`;
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nvarying vec3 vGPos;\n${NOISE}`)
+      .replace('#include <map_fragment>', `#include <map_fragment>\n  {${body}\n  }`);
+  };
+  m.customProgramCacheKey = () => `ground-${kind}`;
+}
+
+/** Physically based sky (three's Preetham model) with a gain for this pipeline (the post chain does
+ *  the tone mapping) and a sun-disc scale so the reflection probe can keep the disc tame. */
+function makeSky(): Sky {
+  const sky = new Sky();
+  sky.scale.setScalar(1500);
+  sky.frustumCulled = false;
+  const m = sky.material as THREE.ShaderMaterial;
+  m.uniforms.uGain = { value: 0.42 };
+  m.uniforms.uDisk = { value: 1 };
+  m.uniforms.uSat = { value: 1.45 };
+  m.fragmentShader = m.fragmentShader
+    .replace('uniform vec3 up;', 'uniform vec3 up;\nuniform float uGain;\nuniform float uDisk;\nuniform float uSat;')
+    .replace('L0 += ( vSunE * 19000.0 * Fex ) * sundisk;', 'L0 += ( vSunE * 19000.0 * Fex ) * sundisk * uDisk;')
+    // a polariser's worth of saturation: the deep blue a camera sees away from the sun
+    .replace(
+      'gl_FragColor = vec4( retColor, 1.0 );',
+      'retColor = max(mix(vec3(dot(retColor, vec3(0.2126, 0.7152, 0.0722))), retColor, uSat), 0.0);\ngl_FragColor = vec4( retColor * uGain, 1.0 );',
+    );
+  const u = m.uniforms;
+  u.turbidity!.value = 2.0;
+  u.rayleigh!.value = 1.8;
+  u.mieCoefficient!.value = 0.003;
+  u.mieDirectionalG!.value = 0.86;
+  return sky;
+}
+
+// trees: [x, z, variant (0 big plane, 1 young plane), scale]
+const TREES: [number, number, number, number][] = [
+  // build-outs in the east street's parking lanes (both sides, north of the site)
+  [20.45, -60, 1, 0.92], [20.45, -44, 1, 1.0], [20.45, -26, 1, 0.9],
+  [28.55, -52, 1, 0.95], [28.55, -36, 1, 0.88], [28.55, -20, 1, 1.0],
+  // along the parks' street edges
+  [15.4, 27, 0, 0.92], [15.2, 41, 0, 1.0], [15.5, 56, 0, 0.95], [15.3, 71, 0, 0.9],
+  [35.6, 27, 0, 0.95], [35.4, 43, 0, 0.88], [35.7, 59, 0, 1.0], [35.5, 75, 0, 0.93],
+  [-46, 24.6, 0, 0.95], [-34, 24.4, 0, 1.0], [-22, 24.8, 0, 0.9], [-10.8, 24.5, 1, 1.05], [10.8, 24.6, 1, 1.1],
+];
+{
+  // the park: scattered, clear of the façade shot's corridor, the paths and the survey camera
+  const r = rng(41);
+  let tries = 0;
+  const parkN = IS_MOBILE ? 18 : 26;
+  let n = 0;
+  while (n < parkN && tries++ < 600) {
+    const x = -58 + r() * 72, z = 31 + r() * 84;
+    if (Math.abs(x + 1) < 11 && z < 52) continue;
+    if (Math.abs(z - 39.5) < 2.6 || Math.abs(x - 5.5) < 2.8) continue;
+    if (Math.hypot(x + 22, z - 55) < 9) continue;
+    if (TREES.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 7.5)) continue;
+    TREES.push([x, z, r() < 0.62 ? 0 : 1, 0.8 + r() * 0.32]);
+    n++;
+  }
+  const eastN = IS_MOBILE ? 9 : 14;
+  n = 0;
+  tries = 0;
+  while (n < eastN && tries++ < 600) {
+    const x = 40 + r() * 75, z = 27 + r() * 88;
+    if (Math.abs(z - 53.5) < 2.6) continue;
+    if (Math.hypot(x - 46, z - 34.5) < 10) continue;
+    if (TREES.some(([tx, tz]) => Math.hypot(tx - x, tz - z) < 7.5)) continue;
+    TREES.push([x, z, r() < 0.55 ? 0 : 1, 0.8 + r() * 0.3]);
+    n++;
+  }
+}
+
+// parked vehicles: [x, z, heading (rad, 0 = +x), paint]
+const PAINT = [
+  [0.82, 0.82, 0.8], [0.55, 0.56, 0.58], [0.16, 0.17, 0.18], [0.04, 0.042, 0.046],
+  [0.05, 0.085, 0.21], [0.3, 0.035, 0.035], [0.52, 0.46, 0.35], [0.07, 0.13, 0.1],
+] as const;
+const N_ = -Math.PI / 2, S_ = Math.PI / 2, E_ = 0, W_ = Math.PI;
+const PARKED: [number, number, number, number][] = [
+  [20.45, -18, N_, 0], [20.45, -35, N_, 2], [20.45, -52.5, N_, 4],
+  [28.55, -12, S_, 1], [28.55, -28, S_, 5], [28.55, -44, S_, 0],
+  [20.45, 31, N_, 3], [20.45, 47, N_, 6], [28.55, 35, S_, 1], [28.55, 60, S_, 7],
+  [-18, 18.45, E_, 0], [-30, 18.45, E_, 4], [-44, 18.45, E_, 1], [-26, 10.55, W_, 2],
+];
+/** heading → rotation.y for a model whose nose is +x (sedan) */
+const yawFor = (h: number) => -h;
+
+// signal-phased traffic, closed-form in time: each car approaches from 230 m out, queues at its
+// stop line during red, pulls away on green, and is 300 m down the road (in the haze) before the
+// 60 s cycle wraps. The east street and the cross street get green alternately, so nothing ever
+// meets in the intersection.
+const CYCLE = 60, V_CRUISE = 11, T_DECEL = 2.6, T_ACCEL = 3.2;
+interface Lane { ox: number; oz: number; dx: number; dz: number; phase: number }
+const LANES: Lane[] = [
+  { ox: 22.9, oz: 21.6, dx: 0, dz: -1, phase: 0 }, // east street, northbound (stops south of the junction)
+  { ox: 26.1, oz: 1.7, dx: 0, dz: 1, phase: 0 }, // east street, southbound (stops before the zebra)
+  { ox: 18.3, oz: 15.95, dx: 1, dz: 0, phase: 30 }, // cross street, eastbound
+  { ox: 30.7, oz: 13.05, dx: -1, dz: 0, phase: 30 }, // cross street, westbound
+];
+const CARS_PER_LANE = 3;
+function laneD(u: number, k: number): number {
+  const q = -(3.2 + 6.6 * k);
+  const ta = 21 + 2.4 * k, tr = 30.5 + 1.7 * k;
+  if (u < ta) {
+    const x = ta - u;
+    return x >= T_DECEL ? q - (V_CRUISE * T_DECEL) / 2 - V_CRUISE * (x - T_DECEL) : q - (V_CRUISE * x * x) / (2 * T_DECEL);
+  }
+  if (u < tr) return q;
+  const x = u - tr;
+  return x < T_ACCEL ? q + (V_CRUISE * x * x) / (2 * T_ACCEL) : q + (V_CRUISE * T_ACCEL) / 2 + V_CRUISE * (x - T_ACCEL);
+}
+
+// The rope-access technician (fal image-to-3D, cleaned in Blender: scripts/blender/clean_gen.py).
+// The model faces −x, origin under the boots. Its squeegee arm is skinned to a shoulder bone here,
+// weights from position, so the arm can fan the classic S-stroke across the glass.
+const SHOULDER = new THREE.Vector3(0.12, 1.066, -0.215);
+const HAND = new THREE.Vector3(-0.249, 1.285, -0.22);
+const ROPE_TOP = new THREE.Vector3(0.05, 1.76, -0.095);
+const ROPE_TAIL = new THREE.Vector3(0.06, 0.08, -0.12);
+/** squeegee blade height above the origin */
+const BLADE_Y = 1.38;
+/** where a technician hangs on drop k of the east curtain wall (blade over the drop's centre) */
+const dropZ = (k: number) => Z1 - 1.25 - k * 2.5 + 0.22;
+
+interface Worker {
+  root: THREE.Group;
+  mesh: THREE.SkinnedMesh;
+  arm: THREE.Bone;
+  phase: number;
+}
+
+function skinArm(geo: THREE.BufferGeometry): void {
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+  const n = pos.count;
+  const si = new Uint16Array(n * 4);
+  const sw = new Float32Array(n * 4);
+  const axis = HAND.clone().sub(SHOULDER);
+  const L = axis.length();
+  axis.normalize();
+  const v = new THREE.Vector3(), d = new THREE.Vector3();
+  const ss = (a: number, b: number, x: number) => {
+    const t = clamp((x - a) / (b - a));
+    return t * t * (3 - 2 * t);
+  };
+  for (let i = 0; i < n; i++) {
+    v.fromBufferAttribute(pos, i);
+    d.copy(v).sub(SHOULDER);
+    const along = d.dot(axis);
+    const t = along / L;
+    const r = d.clone().addScaledVector(axis, -along).length();
+    // the arm is on the model's right side (−z); the head, rope and torso centre stay put
+    const side = ss(-0.128, -0.17, v.z);
+    const reach = ss(0.06, 0.34, t);
+    const tube = Math.max(1 - ss(0.1, 0.15, r), ss(0.72, 0.95, t));
+    const w = side * reach * tube;
+    si[i * 4] = 0;
+    si[i * 4 + 1] = 1;
+    sw[i * 4] = 1 - w;
+    sw[i * 4 + 1] = w;
+  }
+  geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4));
+  geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+}
+
+function makeWorker(geo: THREE.BufferGeometry, mat: THREE.Material, phase: number): Worker {
+  const mesh = new THREE.SkinnedMesh(geo, mat);
+  const rootBone = new THREE.Bone();
+  const arm = new THREE.Bone();
+  arm.position.copy(SHOULDER);
+  rootBone.add(arm);
+  mesh.add(rootBone);
+  mesh.updateMatrixWorld(true);
+  mesh.bind(new THREE.Skeleton([rootBone, arm]));
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  const root = new THREE.Group();
+  root.add(mesh);
+  return { root, mesh, arm, phase };
+}
 
 interface CamKey {
   az: number;
@@ -299,18 +493,35 @@ interface CamKey {
 
 // camera per step (az clockwise from north; the building sits between camera and sun)
 const CAMS: CamKey[] = [
-  { az: 222, el: 22, dist: 66, target: [0, 9, 0], fov: 34 }, // establishing, 11:00: the solar study
-  { az: 202, el: 9, dist: 60, target: [0, 12, 0], fov: 40 }, // survey: the sun-path dome over the block
+  { az: 222, el: 3, dist: 72, target: [2, 18, 0], fov: 40 }, // establishing, 11:00: the block and skyline from over the park
+  { az: 200, el: 3, dist: 58, target: [0, 15, 0], fov: 40 }, // survey: the sun-path study against the sky
   { az: 140, el: 30, dist: 30, target: [3, 11, 0], fov: 34 }, // rig
-  { az: 70, el: 12, dist: 21, target: [12, 2.4, -3.5], fov: 34 }, // purify
+  { az: 58, el: 14, dist: 20, target: [12, 2.4, -3.5], fov: 34 }, // purify: from over the far parking lane
   { az: 168, el: 50, dist: 30, target: [0, 12.5, 0], fov: 34 }, // roof
-  { az: 182, el: 10, dist: 36, target: [0, 7, 0], fov: 32 }, // façade (south, in shade)
-  { az: 112, el: 12, dist: 31, target: [5, 7.5, 0], fov: 32 }, // glass (east, in shade)
+  { az: 182, el: 10, dist: 36, target: [0, 7, 0], fov: 32 }, // façade (south, in shade), from the park
+  { az: 104, el: 9, dist: 15, target: [7, 8, 0], fov: 34 }, // glass (east, in shade): follows the crew, over the street
   { az: 96, el: 55, dist: 26, target: [12, 0, 0], fov: 36 }, // ground
-  { az: 128, el: 15, dist: 58, target: [2, 8, 0], fov: 32 }, // reading, golden hour
+  { az: 128, el: 7, dist: 60, target: [2, 11, 0], fov: 32 }, // reading, late afternoon, from over the east park
 ];
 
+/** the glass take follows the crew: the active drop (panning to the next as each finishes), then
+ *  down to the shopfront for the pole. Pure in p. */
+function glassFocus(p: number): [number, number, number] {
+  const s = stepAt(p);
+  const glL = s < 5 ? 0 : s === 5 ? stepLocal(p, 5) : 1;
+  const gS = clamp(glL / 0.78) * DROPS;
+  const k = Math.min(DROPS - 1, Math.floor(gS));
+  const f = gS - k;
+  const tr = k < DROPS - 1 ? smooth(clamp((f - 0.82) / 0.18)) : 0;
+  const z = lerp(dropZ(k), dropZ(Math.min(DROPS - 1, k + 1)), tr);
+  const yt = gS >= DROPS ? FLOOR : H - 0.1 - f * (H - FLOOR);
+  const y = lerp(7.2, lerp(yt, H - 0.1, tr), 0.6);
+  const shop = smooth(clamp((glL - 0.76) / 0.1));
+  return [7, lerp(y, 2.6, shop), lerp(z, 0, shop)];
+}
+
 function camKeyAt(p: number): CamKey {
+  CAMS[6]!.target = glassFocus(p);
   const s = stepAt(p);
   const i = s + 1; // key index
   const local = s < 0 ? clamp(p / STEPS[0]!) : stepLocal(p, s);
@@ -336,20 +547,49 @@ function sunVector(alt: number, az: number): THREE.Vector3 {
   return new THREE.Vector3(Math.sin(z) * Math.cos(a), Math.sin(a), -Math.cos(z) * Math.cos(a));
 }
 
+/** world-space meshes out of a glTF scene (node transforms baked into cloned geometry) */
+function meshesOf(root: THREE.Object3D): Map<string, THREE.Mesh> {
+  root.updateMatrixWorld(true);
+  const out = new Map<string, THREE.Mesh>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const g = m.geometry.clone();
+    g.applyMatrix4(m.matrixWorld);
+    const mesh = new THREE.Mesh(g, m.material);
+    mesh.name = m.name || (m.material as THREE.Material).name;
+    out.set(mesh.name, mesh);
+  });
+  return out;
+}
+
+/** soft round contact shadow under cars (the shadow map is too coarse for the tyre line) */
+function blobTexture(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const grd = g.createRadialGradient(64, 64, 6, 64, 64, 64);
+  grd.addColorStop(0, 'rgba(0,0,0,1)');
+  grd.addColorStop(0.55, 'rgba(0,0,0,0.75)');
+  grd.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = grd;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+
 export class ProcessScene extends GLStage {
   p = 0;
   private shared: Shared;
-  private sun = new THREE.DirectionalLight(0xffffff, 3.2);
-  private hemi = new THREE.HemisphereLight(0xbfd6e6, 0x2a2622, 0.55);
-  private fill = new THREE.DirectionalLight(0xcfe0ea, 0.9);
-  private sky: THREE.Mesh;
-  private skyMat: THREE.ShaderMaterial;
+  private sun = new THREE.DirectionalLight(0xffffff, 3.4);
+  private hemi = new THREE.HemisphereLight(0xbcd4ee, 0x3b4032, 0.2);
+  private sky: Sky;
+  private envs: THREE.Texture[] = [];
+  private envClock = [11.6, 13.6, 16.4];
   private sprays: { pts: THREE.Points; mat: THREE.ShaderMaterial }[] = [];
   private hoseMat: THREE.ShaderMaterial;
   private pipeMat: THREE.ShaderMaterial;
-  private tech = new THREE.Group();
+  private workers: Worker[] = [];
   private ropes: THREE.Line[] = [];
-  private ropeAnchors = [new THREE.Vector3(X1 - 0.6, H + 0.65, 1.2), new THREE.Vector3(X1 - 0.6, H + 0.65, 1.8)];
   private buildingMats: Record<string, THREE.MeshStandardMaterial> = {};
   private leaves!: THREE.InstancedMesh;
   private leafBase: { pos: THREE.Vector3; d: number; r: number }[] = [];
@@ -361,13 +601,19 @@ export class ProcessScene extends GLStage {
   private laser = new THREE.Group();
   private arc!: THREE.Line;
   private arcMat!: THREE.LineDashedMaterial;
-  private sunBall!: THREE.Mesh;
+  private beadMat!: THREE.MeshBasicMaterial;
   private anchors: THREE.Mesh[] = [];
   private anchorMat = new THREE.MeshBasicMaterial({ color: 0x8ec5b1 });
   private tmpM = new THREE.Matrix4();
   private tmpQ = new THREE.Quaternion();
   private tmpV = new THREE.Vector3();
   private tmpS = new THREE.Vector3(1, 1, 1);
+  private tmpE = new THREE.Euler();
+  // street life
+  private cars: THREE.InstancedMesh | null = null;
+  private carBlobs: THREE.InstancedMesh | null = null;
+  private leafU = { uTime: { value: 0 }, uSunView: { value: new THREE.Vector3(0, 1, 0) }, uSunCol: { value: new THREE.Color(1, 1, 1) } };
+  private lampMats: THREE.MeshStandardMaterial[] = [];
   /** reading for the HUD: water at the brush */
   tds = 62;
   private meterCanvas = document.createElement('canvas');
@@ -395,10 +641,10 @@ export class ProcessScene extends GLStage {
       shadows: true,
       fov: 32,
       near: 0.5,
-      far: 400,
+      far: 900,
       maxDpr: IS_MOBILE ? 1.3 : 1.5,
       dof: !IS_MOBILE,
-      post: { bloom: 0.7, threshold: 1.3, flare: 0.35, vignette: 0.48, grain: 0.04, exposure: 1.18, flareTint: new THREE.Color(1, 0.84, 0.6), fstop: 2.2, dof: 34, saturation: 1.06 },
+      post: { bloom: 0.55, threshold: 1.6, flare: 0.22, vignette: 0.36, grain: 0.035, exposure: 1.15, flareTint: new THREE.Color(1, 0.9, 0.74), fstop: 5.6, dof: 5, saturation: 1.04 },
     });
     this.shared = {
       uWallFront: { value: 20 },
@@ -411,31 +657,36 @@ export class ProcessScene extends GLStage {
       tConcrete: { value: null },
       uCleanerPos: { value: new THREE.Vector3(100, 0, 100) },
     };
-    this.scene.fog = new THREE.Fog(0x0b1216, 70, 260);
-    // sky
-    this.skyMat = new THREE.ShaderMaterial({ vertexShader: SKY_VERT, fragmentShader: SKY_FRAG, side: THREE.BackSide, depthWrite: false, uniforms: { uSunDir: { value: new THREE.Vector3(0, 1, 0) }, uWarm: { value: 0 } } });
-    this.sky = new THREE.Mesh(new THREE.SphereGeometry(300, 32, 16), this.skyMat);
-    this.sky.frustumCulled = false;
-    this.sky.renderOrder = -1;
+    // aerial perspective: the haze takes the colour of the horizon
+    this.scene.fog = new THREE.FogExp2(0xa9bfd6, 0.003);
+    this.sky = makeSky();
     this.scene.add(this.sky);
-    // light
+    // light: the sun casts; the sky itself lights everything else through the environment
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(IS_MOBILE ? 1024 : 2048, IS_MOBILE ? 1024 : 2048);
+    const sm = 2048;
+    this.sun.shadow.mapSize.set(sm, sm);
     const sc = this.sun.shadow.camera;
-    sc.left = -22; sc.right = 22; sc.top = 22; sc.bottom = -22; sc.near = 10; sc.far = 120;
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.03;
-    this.scene.add(this.sun, this.sun.target, this.hemi, this.fill, this.fill.target);
+    sc.left = -46; sc.right = 46; sc.top = 46; sc.bottom = -46; sc.near = 20; sc.far = 320;
+    this.sun.shadow.bias = -0.00025;
+    this.sun.shadow.normalBias = 0.045;
+    this.scene.add(this.sun, this.sun.target, this.hemi);
     this.hoseMat = new THREE.ShaderMaterial({ vertexShader: FLOW_VERT, fragmentShader: FLOW_FRAG, fog: true, uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, uFill: { value: 0 }, uColor: { value: new THREE.Color(0x8ec5b1) }, uPulse: { value: -1 } } });
     this.pipeMat = new THREE.ShaderMaterial({ vertexShader: FLOW_VERT, fragmentShader: FLOW_FRAG, fog: true, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { ...THREE.UniformsUtils.clone(THREE.UniformsLib.fog), uTime: { value: 0 }, uFill: { value: 0 }, uColor: { value: new THREE.Color(0x9fd8ff) }, uPulse: { value: -1 } } });
     this.build();
+    // dev only: a handle for tuning from the console / capture scripts
+    if (import.meta.env.DEV) (window as unknown as { __proc?: ProcessScene }).__proc = this;
   }
 
   override async load(): Promise<void> {
-    const [t, gltf, ao] = await Promise.all([
+    const [t, gltf, ao, street, trees, sedan, van, worker] = await Promise.all([
       loadTexture('/media/img/tex-concrete.webp', { repeat: true }),
       loadModel('/media/model/building.glb'),
       loadTexture('/media/model/building-ao.webp'),
+      loadModel('/media/model/street.glb'),
+      loadModel('/media/model/trees.glb'),
+      loadModel('/media/model/sedan.glb'),
+      loadModel('/media/model/van.glb'),
+      loadModel('/media/model/worker-rope.glb'),
     ]);
     t.colorSpace = THREE.NoColorSpace;
     this.shared.tConcrete!.value = t;
@@ -443,7 +694,7 @@ export class ProcessScene extends GLStage {
     ao.flipY = false;
     ao.colorSpace = THREE.NoColorSpace;
     ao.needsUpdate = true;
-    this.scene.environment = this.makeEnv();
+    this.makeEnvs();
     const seen = new Set<THREE.Material>();
     gltf.scene.traverse((o) => {
       const m = o as THREE.Mesh;
@@ -467,61 +718,347 @@ export class ProcessScene extends GLStage {
     });
     this.disposables.push(ao);
     this.scene.add(gltf.scene);
+
+    this.addStreet(street.scene);
+    this.addTrees(trees.scene);
+    this.addVehicles(sedan.scene, van.scene);
+    this.addWorkers(worker.scene);
+    this.makeCityProbe();
   }
 
-  /** A gradient sky with a low city skyline painted into an equirect, prefiltered for reflections. */
-  private makeEnv(): THREE.Texture {
-    const c = document.createElement('canvas');
-    c.width = 1024;
-    c.height = 512;
-    const g = c.getContext('2d')!;
-    const grad = g.createLinearGradient(0, 0, 0, 512);
-    grad.addColorStop(0, '#05080b');
-    grad.addColorStop(0.42, '#18232b');
-    grad.addColorStop(0.5, '#5d6a70');
-    grad.addColorStop(0.54, '#20272b');
-    grad.addColorStop(1, '#0b0f12');
-    g.fillStyle = grad;
-    g.fillRect(0, 0, 1024, 512);
-    // two long softbox strips and a top light: crisp highlights running down the glass
-    const strip = (x: number, y: number, w: number, h: number, a: number) => {
-      const sgr = g.createLinearGradient(x, 0, x + w, 0);
-      sgr.addColorStop(0, 'rgba(255,255,255,0)');
-      sgr.addColorStop(0.5, `rgba(255,250,240,${a})`);
-      sgr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = sgr;
-      g.fillRect(x, y, w, h);
-    };
-    strip(150, 120, 60, 200, 1);
-    strip(640, 90, 80, 230, 0.9);
-    strip(380, 10, 260, 40, 0.7);
-    const r = rng(7);
-    for (let i = 0; i < 40; i++) {
-      g.fillStyle = `rgba(255,${200 + r() * 40},${150 + r() * 60},${0.25 + r() * 0.4})`;
-      g.fillRect(r() * 1024, 250 + r() * 14, 2 + r() * 3, 2);
-    }
-    const tex = new THREE.CanvasTexture(c);
-    tex.mapping = THREE.EquirectangularReflectionMapping;
-    tex.colorSpace = THREE.SRGBColorSpace;
+  /** The building's glass reflects the street, not just the sky: one cube capture of the finished
+   *  city from across the forecourt, prefiltered, used as the glass materials' envMap. */
+  private makeCityProbe(): void {
+    const rt = new THREE.WebGLCubeRenderTarget(IS_MOBILE ? 128 : 256, { type: THREE.HalfFloatType });
+    const cam = new THREE.CubeCamera(0.5, 900, rt);
+    cam.position.set(X1 + 7, 6.5, 0.5);
+    const hidden = [this.arc, this.laser, this.barrier, ...this.sprays.map((s) => s.pts)];
+    const was = hidden.map((o) => o.visible);
+    hidden.forEach((o) => (o.visible = false));
+    const s13 = sunAt(13);
+    const sv = sunVector(s13.alt, s13.az);
+    (this.sky.material as THREE.ShaderMaterial).uniforms.sunPosition!.value.copy(sv);
+    this.sun.position.copy(sv).multiplyScalar(160).add(new THREE.Vector3(8, 0, 4));
+    this.sun.target.position.set(8, 0, 4);
+    this.sun.target.updateMatrixWorld();
+    cam.update(this.renderer, this.scene);
+    hidden.forEach((o, i) => (o.visible = was[i]!));
     const pm = new THREE.PMREMGenerator(this.renderer);
-    const env = pm.fromEquirectangular(tex).texture;
-    tex.dispose();
+    const env = pm.fromCubemap(rt.texture).texture;
     pm.dispose();
+    rt.dispose();
     this.disposables.push(env);
-    return env;
+    for (const n of ['glass_cw', 'glass_win', 'glass_shop', 'spandrel']) {
+      const m = this.buildingMats[n];
+      if (!m) continue;
+      m.envMap = env;
+      m.envMapIntensity = n === 'glass_shop' ? 0.9 : 1.0;
+      m.needsUpdate = true;
+    }
+  }
+
+  /** Reflection probes: the same sky at three times of the working day, prefiltered once at load
+   *  (a PMREM per frame would stall the Iris-class GPUs this has to run on). */
+  private makeEnvs(): void {
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    const envScene = new THREE.Scene();
+    const sky = makeSky();
+    const su = (sky.material as THREE.ShaderMaterial).uniforms;
+    su.uDisk!.value = 0.08;
+    su.uSat!.value = 1.15;
+    envScene.add(sky);
+    for (const clock of this.envClock) {
+      const s = sunAt(clock);
+      (su.sunPosition!.value as THREE.Vector3).copy(sunVector(s.alt, s.az));
+      const rt = pm.fromScene(envScene, 0, 0.1, 3000);
+      this.envs.push(rt.texture);
+      this.disposables.push(rt);
+    }
+    sky.geometry.dispose();
+    (sky.material as THREE.Material).dispose();
+    pm.dispose();
+    this.scene.environment = this.envs[0]!;
+    // shade is lit by the sky alone: about a quarter of the sunlit side, as on a clear day
+    this.scene.environmentIntensity = 0.4;
+  }
+
+  private addStreet(root: THREE.Group): void {
+    const byName = new Map<string, THREE.MeshStandardMaterial>();
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const mat = m.material as THREE.MeshStandardMaterial;
+      byName.set(mat.name, mat);
+      const flat = ['asphalt', 'footpath', 'lawn', 'gravel', 'paint'].includes(mat.name);
+      m.castShadow = !flat;
+      m.receiveShadow = true;
+      mat.envMapIntensity = 0.85;
+      if (mat.map) mat.map.anisotropy = 8;
+      if (mat.name === 'facade-concrete') mat.color.setScalar(0.8);
+      if (mat.name === 'facade-glass') {
+        // the generated curtain-wall photo is very cyan: pull it toward neutral and let the sky
+        // probe do the reflecting, as real tinted glass does
+        mat.roughness = 0.22;
+        mat.metalness = 0.55;
+        mat.envMapIntensity = 1.0;
+        mat.onBeforeCompile = (shader) => {
+          shader.fragmentShader = shader.fragmentShader.replace(
+            '#include <map_fragment>',
+            `#include <map_fragment>
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722))), 0.6) * 0.72;`,
+          );
+        };
+        mat.customProgramCacheKey = () => 'facade-glass';
+      }
+      if (mat.name === 'lampglass') this.lampMats.push(mat);
+    });
+    const lawn = byName.get('lawn');
+    if (lawn) patchGround(lawn, 'lawn');
+    const foot = byName.get('footpath');
+    if (foot) {
+      patchGround(foot, 'footpath');
+      // the block around the site: one slab of footpath under everything, so no seam shows
+      const fill = new THREE.Mesh(new THREE.PlaneGeometry(28.2, 18.4), foot);
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.set(3.1, -0.004, 0.2);
+      fill.receiveShadow = true;
+      this.scene.add(fill);
+    }
+    const gravel = byName.get('gravel');
+    if (gravel) patchGround(gravel, 'gravel');
+    for (const name of ['signal_red', 'signal_green']) {
+      const m = byName.get(name);
+      if (m) m.emissiveIntensity = 1.6;
+    }
+    this.scene.add(root);
+  }
+
+  private addTrees(root: THREE.Group): void {
+    const parts = meshesOf(root);
+    const leafSrc = parts.get('tree_a_leaf')!.material as THREE.MeshStandardMaterial;
+    const woodSrc = parts.get('tree_a_wood')!.material as THREE.MeshStandardMaterial;
+    const leafMap = leafSrc.map!;
+    leafMap.anisotropy = 4;
+    const leafMat = new THREE.MeshStandardMaterial({ map: leafMap, alphaTest: 0.5, vertexColors: true, roughness: 0.82, metalness: 0, envMapIntensity: 0.9 });
+    const wind = `#include <begin_vertex>
+  {
+    #ifdef USE_INSTANCING
+      vec3 ip = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+    #else
+      vec3 ip = vec3(0.0);
+    #endif
+    float hgt = max(transformed.y - 2.4, 0.0);
+    float ph = dot(ip, vec3(0.13, 0.0, 0.17));
+    float sway = sin(uTime * 1.3 + ph) * 0.6 + sin(uTime * 2.7 + ph * 1.7 + transformed.x * 0.4) * 0.3;
+    transformed.x += sway * 0.011 * hgt;
+    transformed.z += cos(uTime * 1.05 + ph) * 0.008 * hgt;
+    transformed += normal * sin(uTime * 5.5 + dot(transformed, vec3(3.1, 1.7, 2.3))) * 0.025;
+  }`;
+    const U = this.leafU;
+    leafMat.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, U);
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;').replace('#include <begin_vertex>', wind);
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nuniform vec3 uSunView; uniform vec3 uSunCol;')
+        .replace(
+          '#include <emissivemap_fragment>',
+          `#include <emissivemap_fragment>
+  // light through the leaves: strongest looking into the sun, a little everywhere
+  float back = pow(max(dot(normalize(-vViewPosition), uSunView), 0.0), 3.0);
+  totalEmissiveRadiance += diffuseColor.rgb * uSunCol * (0.07 + back * 0.9);`,
+        );
+    };
+    leafMat.customProgramCacheKey = () => 'leaf';
+    const leafDepth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map: leafMap, alphaTest: 0.5 });
+    leafDepth.onBeforeCompile = (shader) => {
+      Object.assign(shader.uniforms, U);
+      shader.vertexShader = shader.vertexShader.replace('#include <common>', '#include <common>\nuniform float uTime;').replace('#include <begin_vertex>', wind);
+    };
+    leafDepth.customProgramCacheKey = () => 'leaf-depth';
+    const woodMat = new THREE.MeshStandardMaterial({ map: woodSrc.map, roughness: 0.92, metalness: 0, envMapIntensity: 0.8 });
+    this.disposables.push(leafSrc, woodSrc, leafDepth);
+
+    const r = rng(17);
+    for (const [v, key] of [[0, 'a'], [1, 'b']] as const) {
+      const list = TREES.filter((t) => t[2] === v);
+      const wood = new THREE.InstancedMesh(parts.get(`tree_${key}_wood`)!.geometry, woodMat, list.length);
+      const leaf = new THREE.InstancedMesh(parts.get(`tree_${key}_leaf`)!.geometry, leafMat, list.length);
+      leaf.customDepthMaterial = leafDepth;
+      list.forEach(([x, z, , s], i) => {
+        this.tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * Math.PI * 2);
+        this.tmpS.setScalar(s);
+        this.tmpM.compose(new THREE.Vector3(x, 0, z), this.tmpQ, this.tmpS);
+        wood.setMatrixAt(i, this.tmpM);
+        leaf.setMatrixAt(i, this.tmpM);
+        // late-spring planes: some crowns a touch yellower, some deeper
+        const k = r();
+        leaf.setColorAt(i, new THREE.Color(0.94 + k * 0.12, 0.96 + r() * 0.08, 0.86 + r() * 0.12));
+      });
+      for (const im of [wood, leaf]) {
+        im.castShadow = true;
+        im.receiveShadow = true;
+        im.computeBoundingSphere();
+        this.scene.add(im);
+      }
+    }
+    // tree pits for the build-outs: a kerb square and soil
+    const pits = TREES.filter(([x]) => x > 19.6 && x < 29.4);
+    const kerbMat = new THREE.MeshStandardMaterial({ color: 0xa9a59c, roughness: 0.85 });
+    const soilMat = new THREE.MeshStandardMaterial({ color: 0x2a2219, roughness: 1 });
+    const ring = new THREE.InstancedMesh(new THREE.BoxGeometry(1.7, 0.15, 1.7), kerbMat, pits.length);
+    const soil = new THREE.InstancedMesh(new THREE.PlaneGeometry(1.36, 1.36).rotateX(-Math.PI / 2), soilMat, pits.length);
+    pits.forEach(([x, z], i) => {
+      this.tmpM.makeTranslation(x, ROAD_Y + 0.075, z);
+      ring.setMatrixAt(i, this.tmpM);
+      this.tmpM.makeTranslation(x, 0.003, z);
+      soil.setMatrixAt(i, this.tmpM);
+    });
+    ring.receiveShadow = soil.receiveShadow = true;
+    ring.castShadow = true;
+    this.scene.add(ring, soil);
+  }
+
+  private moving = LANES.length * CARS_PER_LANE;
+
+  private addVehicles(sedanRoot: THREE.Group, vanRoot: THREE.Group): void {
+    const sedan = [...meshesOf(sedanRoot).values()][0]!;
+    const van = [...meshesOf(vanRoot).values()][0]!;
+    const sm = sedan.material as THREE.MeshStandardMaterial;
+    // repaint: the source car is navy; per-instance colour replaces only the paint (saturated blue,
+    // dark), keeping the baked shading, glass, chrome and tyres
+    sm.onBeforeCompile = (shader) => {
+      shader.fragmentShader = shader.fragmentShader.replace(
+        '#include <color_fragment>',
+        `#ifdef USE_COLOR
+  {
+    vec3 t = diffuseColor.rgb;
+    float lum = dot(t, vec3(0.2126, 0.7152, 0.0722));
+    float sat = (t.b - max(t.r, t.g)) / max(t.b, 1e-4);
+    float paint = smoothstep(0.32, 0.58, sat) * smoothstep(0.004, 0.012, t.b) * smoothstep(0.13, 0.07, lum);
+    vec3 rep = clamp(vColor.rgb * (lum / 0.036), 0.0, 0.93);
+    diffuseColor.rgb = mix(t, rep, paint);
+  }
+#endif`,
+      );
+    };
+    sm.customProgramCacheKey = () => 'car-repaint';
+    sm.envMapIntensity = 1.25;
+    const nP = PARKED.length;
+    const total = nP + this.moving;
+    const cars = new THREE.InstancedMesh(sedan.geometry, sm, total);
+    const blobTex = blobTexture();
+    this.disposables.push(blobTex);
+    const blobs = new THREE.InstancedMesh(
+      new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: 0.62, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }),
+      total + 2,
+    );
+    const r = rng(29);
+    PARKED.forEach(([x, z, h, paint], i) => {
+      this.placeCar(cars, blobs, i, x, ROAD_Y, z, yawFor(h), 4.8, 2.0);
+      const c = PAINT[paint]!;
+      cars.setColorAt(i, new THREE.Color(c[0], c[1], c[2]));
+    });
+    for (let i = nP; i < total; i++) {
+      const c = PAINT[Math.floor(r() * PAINT.length)]!;
+      cars.setColorAt(i, new THREE.Color(c[0], c[1], c[2]));
+    }
+    cars.castShadow = true;
+    cars.receiveShadow = true;
+    cars.frustumCulled = false;
+    blobs.frustumCulled = false;
+    blobs.renderOrder = 1;
+    // the crew van by the forecourt, nose north, and one more down the street
+    const vans = new THREE.InstancedMesh(van.geometry, van.material as THREE.MeshStandardMaterial, 2);
+    (van.material as THREE.MeshStandardMaterial).envMapIntensity = 1.2;
+    // van nose is −x: heading h → rotation.y = π − h
+    this.placeCar(vans, blobs, 0, 20.45, ROAD_Y, -6.2, Math.PI - N_, 4.75, 2.0, total);
+    this.placeCar(vans, blobs, 1, 28.55, ROAD_Y, 47.5, Math.PI - S_, 4.75, 2.0, total + 1);
+    vans.castShadow = vans.receiveShadow = true;
+    vans.computeBoundingSphere();
+    this.cars = cars;
+    this.carBlobs = blobs;
+    this.scene.add(cars, vans, blobs);
+  }
+
+  private placeCar(im: THREE.InstancedMesh, blobs: THREE.InstancedMesh, i: number, x: number, y: number, z: number, rotY: number, len: number, wid: number, blobIndex = i): void {
+    this.tmpQ.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotY);
+    this.tmpS.set(1, 1, 1);
+    this.tmpM.compose(this.tmpV.set(x, y, z), this.tmpQ, this.tmpS);
+    im.setMatrixAt(i, this.tmpM);
+    im.instanceMatrix.needsUpdate = true;
+    this.tmpS.set(len * 1.08, 1, wid * 1.05);
+    this.tmpM.compose(this.tmpV.set(x, y + 0.012, z), this.tmpQ, this.tmpS);
+    blobs.setMatrixAt(blobIndex, this.tmpM);
+    blobs.instanceMatrix.needsUpdate = true;
+  }
+
+  private hide(im: THREE.InstancedMesh, i: number): void {
+    this.tmpM.makeScale(0, 0, 0);
+    im.setMatrixAt(i, this.tmpM);
+  }
+
+  private updateTraffic(time: number): void {
+    const cars = this.cars, blobs = this.carBlobs;
+    if (!cars || !blobs) return;
+    const nP = PARKED.length;
+    let i = nP;
+    for (const lane of LANES) {
+      const u = (((time + lane.phase) % CYCLE) + CYCLE) % CYCLE;
+      for (let k = 0; k < CARS_PER_LANE; k++, i++) {
+        const d = laneD(u, k);
+        if (d < -235 || d > 300) {
+          this.hide(cars, i);
+          this.hide(blobs, i);
+          continue;
+        }
+        const x = lane.ox + lane.dx * d, z = lane.oz + lane.dz * d;
+        this.placeCar(cars, blobs, i, x, ROAD_Y, z, Math.atan2(-lane.dz, lane.dx), 4.8, 2.0);
+      }
+    }
+    cars.instanceMatrix.needsUpdate = true;
+    blobs.instanceMatrix.needsUpdate = true;
+  }
+
+  private addWorkers(root: THREE.Group): void {
+    const src = [...meshesOf(root).values()][0]!;
+    const geo = src.geometry;
+    skinArm(geo);
+    const mat = src.material as THREE.MeshStandardMaterial;
+    mat.envMapIntensity = 0.9;
+    for (let i = 0; i <= DROPS; i++) {
+      const w = makeWorker(geo, mat, i * 1.7);
+      w.root.visible = false;
+      this.workers.push(w);
+      this.scene.add(w.root);
+    }
+  }
+
+  /** a worker on the wall: position, which way it faces, the stroke, and its ropes */
+  private poseWorker(w: Worker, pos: THREE.Vector3, rotY: number, time: number, stroke: number): void {
+    w.root.visible = true;
+    w.root.position.copy(pos);
+    // a rope-access tech swings a little on the line and leans into the stroke
+    const t = time + w.phase;
+    w.root.rotation.set(Math.sin(t * 0.7) * 0.025, rotY + Math.sin(t * 0.45) * 0.04, Math.sin(t * 0.9) * 0.02);
+    w.root.position.y += Math.sin(t * 1.4) * 0.025;
+    // the S-stroke: the arm fans across the glass while the blade dips and lifts
+    const yaw = Math.sin(t * 1.55) * 0.34 * stroke;
+    const pitch = (Math.sin(t * 3.1) * 0.08 - 0.04) * stroke;
+    this.tmpE.set(0, yaw, pitch);
+    w.arm.quaternion.setFromEuler(this.tmpE);
   }
 
   // -------------------------------------------------------------------------------------------
   private build(): void {
     const S = this.shared;
     const render = dirtMaterial(0, S, { color: 0xd8c09a, roughness: 0.86, metalness: 0 });
-    const glass = dirtMaterial(1, S, { color: 0x8fa9b8, roughness: 0.035, metalness: 0.92, envMapIntensity: 1.35 });
-    const shop = dirtMaterial(1, S, { color: 0x3c4a52, roughness: 0.04, metalness: 0.75, envMapIntensity: 1.2 }, true);
-    const pavers = dirtMaterial(2, S, { color: 0xcfc5b4, roughness: 0.78, metalness: 0, envMapIntensity: 1.2 });
-    const solar = dirtMaterial(3, S, { color: 0x0c1830, roughness: 0.12, metalness: 0.55, envMapIntensity: 1.3 });
+    const glass = dirtMaterial(1, S, { color: 0x8fa9b8, roughness: 0.035, metalness: 0.92, envMapIntensity: 1.2 });
+    const shop = dirtMaterial(1, S, { color: 0x3c4a52, roughness: 0.04, metalness: 0.75, envMapIntensity: 1.1 }, true);
+    const pavers = dirtMaterial(2, S, { color: 0xcfc5b4, roughness: 0.78, metalness: 0, envMapIntensity: 1.0 });
+    const solar = dirtMaterial(3, S, { color: 0x0c1830, roughness: 0.12, metalness: 0.55, envMapIntensity: 1.2 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x15181a, roughness: 0.7, metalness: 0.1 });
-    const white = new THREE.MeshStandardMaterial({ color: 0xe8e6e0, roughness: 0.4, metalness: 0 });
-    const asphalt = new THREE.MeshStandardMaterial({ color: 0x141a1e, roughness: 0.95, metalness: 0 });
+    const white = new THREE.MeshStandardMaterial({ color: 0xcfcdc6, roughness: 0.55, metalness: 0 });
     const brass = new THREE.MeshStandardMaterial({ color: 0xb98a47, roughness: 0.3, metalness: 0.9 });
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, cast = true, recv = true) => {
       const m = new THREE.Mesh(geo, mat);
@@ -532,14 +1069,10 @@ export class ProcessScene extends GLStage {
       return m;
     };
 
-    // ground and forecourt
-    const ground = add(new THREE.PlaneGeometry(500, 500), asphalt, 0, -1.25, 0, false);
-    ground.rotation.x = -Math.PI / 2;
+    // the paved forecourt (the street model brings everything else at ground level)
     const fw = FORE.x1 - FORE.x0, fd = FORE.z1 - FORE.z0;
-    const fore = add(new THREE.PlaneGeometry(fw, fd), pavers, (FORE.x0 + FORE.x1) / 2, 0.005, (FORE.z0 + FORE.z1) / 2, false);
+    const fore = add(new THREE.PlaneGeometry(fw + 0.2, fd), pavers, (FORE.x0 + FORE.x1) / 2 - 0.1, 0.005, (FORE.z0 + FORE.z1) / 2, false);
     fore.rotation.x = -Math.PI / 2;
-    const kerb = new THREE.BoxGeometry(0.2, 0.15, fd);
-    add(kerb, white, FORE.x1 + 0.1, 0.075, 0);
 
     // the building itself is modelled in Blender (scripts/blender/build_building.py) and arrives in
     // load(); its material names map onto the dirt materials made here
@@ -548,34 +1081,21 @@ export class ProcessScene extends GLStage {
       trim: dirtMaterial(0, S, { color: 0xe6d6b8, roughness: 0.75, metalness: 0 }),
       base: dirtMaterial(0, S, { color: 0xa69174, roughness: 0.9, metalness: 0 }),
       glass_cw: glass,
-      glass_win: dirtMaterial(1, S, { color: 0x6f8794, roughness: 0.05, metalness: 0.88, envMapIntensity: 1.25 }),
+      glass_win: dirtMaterial(1, S, { color: 0x6f8794, roughness: 0.05, metalness: 0.88, envMapIntensity: 1.15 }),
       glass_shop: shop,
-      spandrel: dirtMaterial(1, S, { color: 0x2b353b, roughness: 0.2, metalness: 0.65, envMapIntensity: 1.1 }),
+      spandrel: dirtMaterial(1, S, { color: 0x2b353b, roughness: 0.2, metalness: 0.65, envMapIntensity: 1.0 }),
       solar,
-      roof: new THREE.MeshStandardMaterial({ color: 0x1c1d1f, roughness: 0.95, metalness: 0 }),
-      alu: new THREE.MeshStandardMaterial({ color: 0x737a7f, roughness: 0.42, metalness: 0.9 }),
+      roof: new THREE.MeshStandardMaterial({ color: 0x2a2b2d, roughness: 0.95, metalness: 0 }),
+      alu: new THREE.MeshStandardMaterial({ color: 0x8a9196, roughness: 0.4, metalness: 0.9 }),
     };
     // anchors near the east parapet
     const anchorGeo = new THREE.CylinderGeometry(0.06, 0.08, 0.5, 10);
-    for (const a of this.ropeAnchors) {
-      const m = add(anchorGeo, this.anchorMat, a.x, H + 0.4, a.z, false, false);
-      this.anchors.push(m);
-    }
-    for (const z of [-3.2, -1.0, 3.4]) this.anchors.push(add(anchorGeo, this.anchorMat, X1 - 0.6, H + 0.4, z, false, false));
+    for (let k = 0; k < DROPS; k++) for (const dz of [-0.1, 0.18]) this.anchors.push(add(anchorGeo, this.anchorMat, X1 - 0.6, H + 0.4, dropZ(k) + dz, false, false));
     // the modelled downpipe (south face, by the east pier) gets a glowing sleeve for the flush
     const pipeCurve = new THREE.LineCurve3(new THREE.Vector3(DPX, H - 0.45, DPZ), new THREE.Vector3(DPX, 0.12, DPZ));
     const sleeve = new THREE.Mesh(new THREE.TubeGeometry(pipeCurve, 40, 0.09, 10, false), this.pipeMat);
     this.scene.add(sleeve);
 
-    // the site as a presentation model: a round plinth with a chamfered edge, the street beyond it
-    // falling away into the sky (fog matched to the horizon)
-    const plinthMat = new THREE.MeshStandardMaterial({ color: 0x4a4a46, roughness: 0.6, metalness: 0.05, envMapIntensity: 0.8 });
-    const plinth = add(new THREE.CylinderGeometry(R_ARC + 1.5, R_ARC + 2.4, 1.2, 96, 1), plinthMat, 2, -0.61, 0, false, true);
-    plinth.receiveShadow = true;
-    const edge = add(new THREE.TorusGeometry(R_ARC + 1.5, 0.05, 6, 160), new THREE.MeshBasicMaterial({ color: 0xb98a47 }), 2, 0.0, 0, false, false);
-    edge.rotation.x = Math.PI / 2;
-    // a kerb and a strip of road along the forecourt, so the shopfront faces a street
-    add(new THREE.BoxGeometry(5.5, 0.02, 2 * R_ARC), new THREE.MeshStandardMaterial({ color: 0x4d5254, roughness: 0.9 }), FORE.x1 + 3.2, 0.0, 0, false);
     // purification trailer and the hose up to the parapet
     const trailer = new THREE.Group();
     const steelMat = new THREE.MeshStandardMaterial({ color: 0xc9ced1, roughness: 0.28, metalness: 0.85 });
@@ -614,6 +1134,7 @@ export class ProcessScene extends GLStage {
       wh.position.set(0.2, 0.36, z);
       trailer.add(wh);
     }
+    trailer.traverse((o) => (o.receiveShadow = true));
     this.disposables.push(this.meterTex);
     trailer.position.set(FORE.x1 - 2.2, 0, FORE.z0 + 2.0);
     this.scene.add(trailer);
@@ -628,29 +1149,14 @@ export class ProcessScene extends GLStage {
     ]);
     this.scene.add(new THREE.Mesh(new THREE.TubeGeometry(hoseCurve, 160, 0.05, 8, false), this.hoseMat));
 
-    // the technician on two ropes
-    const suit = new THREE.MeshStandardMaterial({ color: 0x1c2a33, roughness: 0.75 });
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.55, 4, 10), suit);
-    torso.position.y = 0.1;
-    torso.rotation.z = 0.12;
-    const helmet = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), white);
-    helmet.position.set(0.05, 0.62, 0);
-    const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.5, 4, 8), suit);
-    legs.position.set(-0.08, -0.45, 0.12);
-    legs.rotation.z = 1.2;
-    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.04, 0.3), brass);
-    seat.position.y = -0.25;
-    const squeegee = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.5), brass);
-    squeegee.position.set(0.32, 0.45, 0.1);
-    this.tech.add(torso, helmet, legs, seat, squeegee);
-    this.tech.traverse((o) => (o.castShadow = true));
-    this.tech.scale.setScalar(1.35);
-    this.scene.add(this.tech);
-    const ropeMat = new THREE.LineBasicMaterial({ color: 0xd9bc8c });
-    for (let i = 0; i < 2; i++) {
-      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    // ropes: working line and backup for the technician (the model carries its own rope below the
+    // descender; these run from the anchors over the parapet)
+    const ropeMat = new THREE.LineBasicMaterial({ color: 0xe8d7b0 });
+    for (let i = 0; i < (DROPS + 1) * 2; i++) {
+      const g = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()]);
       const l = new THREE.Line(g, ropeMat);
       l.frustumCulled = false;
+      l.visible = false;
       this.ropes.push(l);
       this.scene.add(l);
     }
@@ -709,6 +1215,7 @@ export class ProcessScene extends GLStage {
       const a = pts[i]!;
       const post = new THREE.Mesh(postGeo, white);
       post.position.set(a.x, 0.5, a.z);
+      post.castShadow = true;
       this.barrier.add(post);
       if (i < pts.length - 1) {
         const b = pts[i + 1]!;
@@ -731,7 +1238,7 @@ export class ProcessScene extends GLStage {
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.14, 0.14), brass);
     head.position.y = 1.5;
     tri.add(head);
-    const tripodAt = new THREE.Vector3(X1 + 6.5, 0, Z1 + 4.5);
+    const tripodAt = new THREE.Vector3(X1 + 6.5, 0, Z1 + 3.2);
     tri.position.copy(tripodAt);
     this.laser.add(tri);
     const laserMat = new THREE.LineDashedMaterial({ color: 0xff5a3c, dashSize: 0.3, gapSize: 0.18, transparent: true, opacity: 0.95 });
@@ -744,41 +1251,25 @@ export class ProcessScene extends GLStage {
     }
     this.scene.add(this.laser);
 
-    // the sun path for today, drawn as a solar-study dome over the building: a dashed arc with
-    // hour beads, a compass ring on the ground, and the sun riding the arc
+    // the sun path for today, drawn over the block like an architect's solar study: a dashed arc
+    // with hour beads (the real sun rides it, in the sky behind)
     const arcPts: THREE.Vector3[] = [];
     for (let h = 5; h <= 20.01; h += 0.1) {
       const s = sunAt(h);
       if (s.alt < -2) continue;
       arcPts.push(sunVector(s.alt, s.az).multiplyScalar(R_ARC));
     }
-    this.arcMat = new THREE.LineDashedMaterial({ color: 0x8ec5b1, dashSize: 1.6, gapSize: 1.1, transparent: true, opacity: 0.9, fog: false });
+    this.arcMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 1.6, gapSize: 1.1, transparent: true, opacity: 0.9, fog: false });
     this.arc = new THREE.Line(new THREE.BufferGeometry().setFromPoints(arcPts), this.arcMat);
     this.arc.computeLineDistances();
     this.arc.frustumCulled = false;
     this.scene.add(this.arc);
-    this.sunBall = new THREE.Mesh(new THREE.SphereGeometry(0.75, 20, 12), new THREE.MeshBasicMaterial({ color: new THREE.Color(7, 6.2, 4.6), fog: false }));
-    this.scene.add(this.sunBall);
-    // compass ring with ticks every 15°, long at the cardinal points
-    const ringPts: THREE.Vector3[] = [];
-    for (let a = 0; a <= 360; a += 3) ringPts.push(new THREE.Vector3(Math.sin((a * Math.PI) / 180) * R_ARC, 0.06, -Math.cos((a * Math.PI) / 180) * R_ARC));
-    const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts), this.arcMat);
-    ring.computeLineDistances();
-    this.arc.add(ring);
-    const tickPts: THREE.Vector3[] = [];
-    for (let a = 0; a < 360; a += 15) {
-      const len = a % 90 === 0 ? 3.2 : 1.1;
-      const sx = Math.sin((a * Math.PI) / 180), sz = -Math.cos((a * Math.PI) / 180);
-      tickPts.push(new THREE.Vector3(sx * R_ARC, 0.06, sz * R_ARC), new THREE.Vector3(sx * (R_ARC - len), 0.06, sz * (R_ARC - len)));
-    }
-    this.arc.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(tickPts), new THREE.LineBasicMaterial({ color: 0x8ec5b1, transparent: true, opacity: 0.8 })));
-    // hour ticks on the arc
-    const tickGeo = new THREE.SphereGeometry(0.22, 8, 6);
-    const tickMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.4, 2.2, 1.9), fog: false });
+    const tickGeo = new THREE.SphereGeometry(0.2, 8, 6);
+    this.beadMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.6, 1.5, 1.2), fog: false, transparent: true });
     for (let h = 6; h <= 19; h++) {
       const s = sunAt(h);
       if (s.alt < 0) continue;
-      const m = new THREE.Mesh(tickGeo, tickMat);
+      const m = new THREE.Mesh(tickGeo, this.beadMat);
       m.position.copy(sunVector(s.alt, s.az).multiplyScalar(R_ARC));
       this.arc.add(m);
     }
@@ -802,7 +1293,7 @@ export class ProcessScene extends GLStage {
       blending: THREE.AdditiveBlending,
       uniforms: {
         uTime: { value: 0 }, uOrigin: { value: new THREE.Vector3() }, uDir: { value: new THREE.Vector3(0, -1, 0) }, uSpread: { value: 0.6 },
-        uSpeed: { value: 3 }, uLife: { value: 0.7 }, uOn: { value: 0 }, uSize: { value: 0.12 }, uGravity: { value: 9.8 }, uColor: { value: new THREE.Color(1.4, 1.6, 1.8) },
+        uSpeed: { value: 3 }, uLife: { value: 0.7 }, uOn: { value: 0 }, uSize: { value: 0.12 }, uGravity: { value: 9.8 }, uColor: { value: new THREE.Color(1.1, 1.25, 1.4) },
       },
     });
     const pts = new THREE.Points(g, mat);
@@ -831,6 +1322,7 @@ export class ProcessScene extends GLStage {
     this.hoseMat.uniforms.uTime!.value = time;
     this.pipeMat.uniforms.uTime!.value = time;
     for (const s of this.sprays) s.mat.uniforms.uTime!.value = time;
+    this.leafU.uTime.value = time;
     const step = stepAt(p);
     const L = (i: number) => stepLocal(p, i);
 
@@ -838,23 +1330,27 @@ export class ProcessScene extends GLStage {
     const clock = clockAt(p);
     const sun = sunAt(clock);
     const sv = sunVector(sun.alt, sun.az);
-    this.sun.position.copy(sv).multiplyScalar(60);
-    this.sun.target.position.set(0, 0, 0);
     const warm = clamp(1 - (sun.alt - 12) / 40);
-    this.sun.color.setRGB(1, lerp(0.97, 0.74, warm), lerp(0.92, 0.5, warm));
-    this.sun.intensity = lerp(4.2, 3.4, warm) * smooth(clamp(sun.alt / 8));
-    this.hemi.intensity = lerp(0.5, 0.36, warm);
-    this.hemi.color.setRGB(lerp(0.6, 0.85, warm), lerp(0.74, 0.62, warm), lerp(0.92, 0.55, warm));
-    this.hemi.groundColor.setRGB(0.22, 0.18, 0.14);
-    (this.skyMat.uniforms.uSunDir!.value as THREE.Vector3).copy(sv);
-    this.skyMat.uniforms.uWarm!.value = warm;
-    (this.scene.fog as THREE.Fog).color.setRGB(lerp(0.045, 0.1, warm), lerp(0.07, 0.06, warm), lerp(0.09, 0.045, warm));
-    this.sunBall.position.copy(sv).multiplyScalar(R_ARC);
-    this.post.opts.flare = 0.25 + warm * 0.35;
+    this.sun.color.setRGB(1, lerp(0.96, 0.8, warm), lerp(0.9, 0.62, warm));
+    this.sun.intensity = lerp(3.6, 3.0, warm) * smooth(clamp(sun.alt / 8));
+    this.hemi.intensity = 0.2;
+    (this.sky.material as THREE.ShaderMaterial).uniforms.sunPosition!.value.copy(sv);
+    // reflection probe nearest this time of day
+    let ei = 0;
+    for (let i = 1; i < this.envClock.length; i++) if (Math.abs(clock - this.envClock[i]!) < Math.abs(clock - this.envClock[ei]!)) ei = i;
+    if (this.envs[ei] && this.scene.environment !== this.envs[ei]) this.scene.environment = this.envs[ei]!;
+    // haze: pale blue at midday, warmer as the sun drops
+    (this.scene.fog as THREE.FogExp2).color.setRGB(lerp(0.5, 0.7, warm), lerp(0.62, 0.66, warm), lerp(0.78, 0.66, warm));
+    this.post.opts.flare = 0.16 + warm * 0.18;
+    // leaves glow when the camera looks toward the sun through them
+    this.leafU.uSunView.value.copy(sv).transformDirection(this.camera.matrixWorldInverse);
+    this.leafU.uSunCol.value.copy(this.sun.color).multiplyScalar(this.sun.intensity * 0.32);
+    this.updateTraffic(time);
 
     // survey: sun path and lasers
-    const arcOn = step <= 0 ? 0.95 : step === 7 ? 0.6 : 0.3;
+    const arcOn = step <= 0 ? 0.75 : step === 7 ? 0.4 : 0;
     this.arcMat.opacity = arcOn;
+    this.beadMat.opacity = arcOn;
     this.arc.visible = arcOn > 0.01;
     this.laser.visible = step === 0;
     if (this.laser.visible) this.laser.children.forEach((c) => c instanceof THREE.Line && ((c.material as THREE.LineDashedMaterial).opacity = band(0, 0.25, L(0)) * (1 - band(0.85, 1, L(0)))));
@@ -877,23 +1373,21 @@ export class ProcessScene extends GLStage {
     const nozPos = vd < east ? new THREE.Vector3(X1 - 0.5, DECK + 0.45, Z0 + 0.3 + vd) : new THREE.Vector3(X1 - 0.4 - (vd - east), DECK + 0.45, Z1 - 0.5);
     this.nozzle.position.copy(nozPos);
     this.nozzle.visible = step === 3 && vac > 0 && vac < 1;
+    const lp = new THREE.Vector3();
     for (let i = 0; i < this.leafBase.length; i++) {
       const leaf = this.leafBase[i]!;
-      const b = leaf.pos;
-      const ud = leaf;
-      const passAt = ud.d;
-      const since = (vac - passAt) * 6; // > 0 once the nozzle has passed
+      const since = (vac - leaf.d) * 6; // > 0 once the nozzle has passed
       let s = 1;
-      this.tmpV.copy(b);
+      lp.copy(leaf.pos);
       if (since > 0) {
         const k = clamp(since);
-        this.tmpV.lerp(nozPos, smooth(k));
-        this.tmpV.y += Math.sin(k * Math.PI) * 0.4;
+        lp.lerp(nozPos, smooth(k));
+        lp.y += Math.sin(k * Math.PI) * 0.4;
         s = 1 - k;
       }
-      this.tmpQ.setFromEuler(new THREE.Euler(-Math.PI / 2 + ud.r * 0.6, ud.r * 6.28 + time * (since > 0 ? 8 : 0), 0));
+      this.tmpQ.setFromEuler(this.tmpE.set(-Math.PI / 2 + leaf.r * 0.6, leaf.r * 6.28 + time * (since > 0 ? 8 : 0), 0));
       this.tmpS.setScalar(Math.max(0.0001, s));
-      this.tmpM.compose(this.tmpV, this.tmpQ, this.tmpS);
+      this.tmpM.compose(lp, this.tmpQ, this.tmpS);
       this.leaves.setMatrixAt(i, this.tmpM);
     }
     this.leaves.instanceMatrix.needsUpdate = true;
@@ -913,10 +1407,8 @@ export class ProcessScene extends GLStage {
     const facL = step < 4 ? 0 : step === 4 ? L(4) : 1;
     S.uWallFront!.value = lerp(15.5, -2.2, smooth(facL));
     const frontY = S.uWallFront!.value as number;
-    const techFace = step === 4;
-    const techGlass = step === 5;
 
-    // glass: four drops, technician descending each, then the shopfront by pole
+    // glass: four drops, the technician descending each, then the shopfront by pole
     const glL = step < 5 ? 0 : step === 5 ? L(5) : 1;
     const gS = clamp(glL / 0.78) * DROPS;
     S.uGlassS!.value = gS;
@@ -924,32 +1416,55 @@ export class ProcessScene extends GLStage {
     S.uShopFront!.value = step < 5 ? -8 : lerp(Z0 - 0.5, Z1 + 0.5, shopL);
     this.pole.visible = step === 5 && shopL > 0 && shopL < 1;
     this.pole.position.set(X1 + 0.9, 0, lerp(Z0, Z1, shopL));
-    // technician
-    let tp: THREE.Vector3 | null = null;
-    if (techFace && facL > 0 && facL < 1) {
-      tp = new THREE.Vector3(lerp(X1 - 2.0, X0 + 2.0, Math.floor(facL * 3) / 3 + 0.12), Math.max(1.6, frontY + 0.6), Z1 + 0.45);
-      this.spray(1, 1, tp.clone().add(new THREE.Vector3(0.2, 0.3, -0.2)), new THREE.Vector3(0, -0.15, -1), { spread: 0.5, speed: 4.5, life: 0.35, size: 0.1, gravity: 4 });
-    } else if (techGlass && gS < DROPS) {
-      const k = Math.min(DROPS - 1, Math.floor(gS));
-      const yt = H - 0.1 - (gS - k) * (H - FLOOR);
-      tp = new THREE.Vector3(X1 + 0.45, yt + 0.2, Z1 - 1.25 - k * 2.5);
-      this.spray(1, 1, tp.clone().add(new THREE.Vector3(-0.2, 0.55, 0)), new THREE.Vector3(-1, -1.2, 0), { spread: 0.4, speed: 1.4, life: 0.9, size: 0.06, gravity: 6 });
-    } else this.spray(1, 0, this.tmpV, this.tmpV);
-    this.tech.visible = !!tp;
-    if (tp) {
-      this.tech.position.copy(tp);
-      this.tech.rotation.y = techFace ? Math.PI : -Math.PI / 2;
-      // ropes from the anchors (east face) or over the south parapet
-      const a0 = techFace ? new THREE.Vector3(tp.x - 0.15, H + PARAPET, Z1 - 0.2) : this.ropeAnchors[0]!;
-      const a1 = techFace ? new THREE.Vector3(tp.x + 0.15, H + PARAPET, Z1 - 0.2) : this.ropeAnchors[1]!;
-      this.setRope(0, a0, tp.clone().add(new THREE.Vector3(0, 0.3, 0)));
-      this.setRope(1, a1, tp.clone().add(new THREE.Vector3(0, 0.25, 0.05)));
-    } else if (step >= 1 && step <= 3) {
-      // rigged: ropes hang down the east face to the ground
-      this.setRope(0, this.ropeAnchors[0]!, new THREE.Vector3(X1 + 0.35, 0.1, this.ropeAnchors[0]!.z));
-      this.setRope(1, this.ropeAnchors[1]!, new THREE.Vector3(X1 + 0.35, 0.1, this.ropeAnchors[1]!.z));
-    } else this.ropes.forEach((r) => (r.visible = false));
-    if (step >= 1 && step <= 3) this.ropes.forEach((r) => (r.visible = band(0, 0.3, step === 1 ? L(1) : 1) > 0.5));
+
+    // the crew: four technicians on the east curtain wall, one per drop (waiting under the
+    // parapet, descending with the squeegee as the clean line comes down, then detailing the low
+    // panes), and a fifth soft-washing the south wall. Each hangs on a working line and a backup.
+    for (const w of this.workers) w.root.visible = false;
+    this.ropes.forEach((r) => (r.visible = false));
+    const hand = new THREE.Vector3();
+    let sprayOn = false;
+    const wf = this.workers[DROPS];
+    if (wf && step === 4 && facL > 0 && facL < 1) {
+      // south wall, facing north; three bays left to right across the take
+      const x = lerp(X1 - 2.0, X0 + 2.0, Math.floor(facL * 3) / 3 + 0.12);
+      const y = Math.max(0.35, frontY + 0.5 - BLADE_Y);
+      this.poseWorker(wf, this.tmpV.set(x, y, Z1 + 0.82), -Math.PI / 2, time, 0.55);
+      this.ropeTo(DROPS * 2, wf, new THREE.Vector3(x + 0.1, H + PARAPET + 0.05, Z1 + 0.06), new THREE.Vector3(x + 0.1, H + 0.6, Z1 - 0.7));
+      hand.copy(HAND).sub(SHOULDER);
+      wf.arm.localToWorld(hand);
+      this.spray(1, 1, hand, new THREE.Vector3(0, -0.12, -1), { spread: 0.5, speed: 4.5, life: 0.35, size: 0.09, gravity: 4 });
+      sprayOn = true;
+    }
+    // from the rig onward the east crew hangs on its lines under the parapet, ready
+    const rigged = step >= 1 && step <= 4 && band(0, 0.3, step === 1 ? L(1) : 1) > 0.5;
+    if (step === 5 || rigged) {
+      for (let k = 0; k < DROPS; k++) {
+        const w = this.workers[k];
+        if (!w) continue;
+        const z = dropZ(k);
+        let y: number, stroke: number;
+        if (step !== 5 || gS < k) {
+          y = H - 0.1 - BLADE_Y + 0.15;
+          stroke = 0.12;
+        } else if (gS < k + 1) {
+          y = H - 0.1 - (gS - k) * (H - FLOOR) - BLADE_Y;
+          stroke = 1;
+        } else {
+          y = FLOOR - 0.1 - BLADE_Y + Math.sin(time * 0.3 + k) * 0.25;
+          stroke = 0.3;
+        }
+        this.poseWorker(w, this.tmpV.set(X1 + 0.8, y, z), 0, time, stroke);
+        this.ropeTo(k * 2, w, new THREE.Vector3(X1 + 0.06, H + PARAPET + 0.05, z - 0.1), new THREE.Vector3(X1 - 0.6, H + 0.65, z - 0.1));
+        if (stroke === 1) {
+          hand.copy(HAND).sub(SHOULDER).add(new THREE.Vector3(-0.08, 0.05, 0));
+          w.arm.localToWorld(hand);
+          this.spray(1, 1, hand, new THREE.Vector3(-1, -1.2, 0), { spread: 0.4, speed: 1.4, life: 0.9, size: 0.05, gravity: 6 });
+          sprayOn = true;
+        }
+      }
+    }
+    if (!sprayOn) this.spray(1, 0, this.tmpV, this.tmpV);
 
     // ground: rotary surface cleaner in lanes
     const grL = step < 6 ? 0 : step === 6 ? L(6) : 1;
@@ -967,39 +1482,84 @@ export class ProcessScene extends GLStage {
     (S.uCleanerPos!.value as THREE.Vector3).set(this.cleaner.visible ? cx : 999, 0, cz);
     this.spray(2, this.cleaner.visible ? 1 : 0, new THREE.Vector3(cx, 0.08, cz), new THREE.Vector3(0, 0.25, 1), { spread: 3.2, speed: 1.1, life: 0.55, size: 0.11, gravity: 3 });
 
-    // reading: the lights come on
+    // reading: the lights come on, inside and along the street
     S.uInterior!.value = step < 6 ? 0.05 : step === 6 ? lerp(0.05, 0.3, L(6)) : lerp(0.3, 1.0, smooth(L(7)));
+    const lamps = step < 7 ? 0 : smooth(clamp(L(7) / 0.6)) * 2.2;
+    for (const m of this.lampMats) m.emissiveIntensity = lamps;
 
     // camera
     const ck = camKeyAt(p);
     const aspect = this.aspect;
-    // portrait screens: pull back so the building still fits the width
-    const wide = ck.dist > 50 ? 0.62 : 1;
-    const fit = aspect < 1 ? Math.min(2.1, 1.05 / aspect) * (aspect < 1 ? wide + (1 - wide) * 0.4 : 1) : aspect < 1.4 ? 1.12 : 1;
+    // narrow screens: a little further back, then a wider lens, so the building still fits
+    const portrait = aspect < 1;
+    const distMul = portrait ? 1.22 : aspect < 1.4 ? 1.08 : 1;
+    let fov = ck.fov;
+    if (aspect < 1.5) {
+      const want = (Math.tan(THREE.MathUtils.degToRad(ck.fov) / 2) * 1.6 * (portrait ? 0.78 : 0.94)) / (aspect * distMul);
+      fov = Math.min(68, Math.max(ck.fov, THREE.MathUtils.radToDeg(2 * Math.atan(want))));
+    }
     const az = THREE.MathUtils.degToRad(ck.az), el = THREE.MathUtils.degToRad(ck.el);
-    const dist = ck.dist * fit;
+    const dist = ck.dist * distMul;
     this.camera.position.set(ck.target[0] + Math.sin(az) * Math.cos(el) * dist, ck.target[1] + Math.sin(el) * dist, ck.target[2] - Math.cos(az) * Math.cos(el) * dist);
     this.camera.lookAt(ck.target[0], ck.target[1], ck.target[2]);
-    if (Math.abs(this.camera.fov - ck.fov) > 0.01) {
-      this.camera.fov = ck.fov;
+    if (Math.abs(this.camera.fov - fov) > 0.01) {
+      this.camera.fov = fov;
       this.camera.updateProjectionMatrix();
     }
-    // fill from just above the camera, toward the target (no shadows)
-    this.fill.position.copy(this.camera.position).add(new THREE.Vector3(0, 6, 0));
-    this.fill.target.position.set(ck.target[0], ck.target[1], ck.target[2]);
-    this.fill.intensity = lerp(1.0, 0.55, warm);
-    // tilt-shift: focus on the work, the rest falls off like a photographed model
+    this.camera.updateMatrixWorld();
+    this.fitShadow(sv, ck);
+    // a real lens at working distance: only a gentle fall-off front and back
     this.post.opts.focus = dist;
     this.post.opts.focalMM = this.focalMM;
-    this.post.opts.fstop = lerp(2.4, 3.6, clamp((dist - 20) / 40));
+    this.post.opts.fstop = lerp(4, 6.3, clamp((dist - 20) / 40));
   }
 
-  private setRope(i: number, a: THREE.Vector3, b: THREE.Vector3): void {
+  private shadowHalf = 0;
+  /** The sun's shadow map covers what the shot sees: tight for close-ups (crisp edges), wide for
+   *  the aerials. Its centre snaps to whole shadow texels in the light's frame, and the size to
+   *  2 m steps, so edges hold still while the camera moves. */
+  private fitShadow(sv: THREE.Vector3, ck: CamKey): void {
+    const half = Math.round(clamp(ck.dist * 0.8, 24, 54) / 2) * 2;
+    const sc = this.sun.shadow.camera;
+    if (half !== this.shadowHalf) {
+      this.shadowHalf = half;
+      sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half;
+      sc.updateProjectionMatrix();
+    }
+    const texel = (2 * half) / this.sun.shadow.mapSize.x;
+    const fwd = this.tmpV.copy(sv).negate();
+    const right = new THREE.Vector3().crossVectors(fwd, new THREE.Vector3(0, 1, 0)).normalize();
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    // the target, pulled toward the building so the work always has its shadows
+    const c = new THREE.Vector3(lerp(ck.target[0], 3, 0.35), 0, lerp(ck.target[2], 0, 0.35));
+    const a = Math.round(c.dot(right) / texel) * texel;
+    const b = Math.round(c.dot(up) / texel) * texel;
+    const d = c.dot(fwd);
+    c.copy(right).multiplyScalar(a).addScaledVector(up, b).addScaledVector(fwd, d);
+    this.sun.target.position.copy(c);
+    this.sun.position.copy(c).addScaledVector(sv, 160);
+  }
+
+  /** working line from the anchor, over the parapet edge, down to the technician's descender */
+  private ropeTo(i: number, w: Worker, edge: THREE.Vector3, anchor: THREE.Vector3): void {
+    w.root.updateMatrixWorld(true);
+    const top = w.mesh.localToWorld(ROPE_TOP.clone());
+    const tail = w.mesh.localToWorld(ROPE_TAIL.clone());
+    this.setRope(i, [anchor, edge, top], true);
+    // the backup line runs past the tech and hangs to the ground beside the working line's tail
+    const e2 = edge.clone().add(new THREE.Vector3(0, 0, 0.28));
+    const a2 = anchor.clone().add(new THREE.Vector3(0, 0, 0.28));
+    this.setRope(i + 1, [a2, e2, new THREE.Vector3(tail.x + 0.05, 0.02, tail.z + 0.28)], true);
+  }
+
+  private setRope(i: number, pts: THREE.Vector3[], on: boolean): void {
     const r = this.ropes[i]!;
-    r.visible = true;
+    r.visible = on;
     const pos = r.geometry.getAttribute('position') as THREE.BufferAttribute;
-    pos.setXYZ(0, a.x, a.y, a.z);
-    pos.setXYZ(1, b.x, b.y, b.z);
+    for (let j = 0; j < 3; j++) {
+      const q = pts[Math.min(j, pts.length - 1)]!;
+      pos.setXYZ(j, q.x, q.y, q.z);
+    }
     pos.needsUpdate = true;
   }
 }
